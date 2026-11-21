@@ -1,0 +1,62 @@
+# ReMed — reminders for medicines (Telegram MVP)
+
+Send a photo of a doctor's prescription → the bot reads it into a structured, confirmable schedule → sends one well-timed reminder per dose until the course ends. No app install, no accounts: the Telegram chat is the product and the chat ID is the identity.
+
+Built against `tech-design-deep-dive.md` (tables, state machines, AI contracts), with `conversation-script-v0.2.md` as the message surface and `prd-v0.4.md` as the scope fence.
+
+## Status — first working slice (MVP core, tested)
+
+- ✅ Photo intake → AI extraction → validation → draft → **confirmation gate** → Apply → whole course expanded into `dose_events` + precomputed `reminder_queue` (deep dive §5 scheduling math; no send-time math, DST-safe, past times never re-sent).
+- ✅ Reminder engine: 30 s DB-backed loop, delivery ack, ≤3 silent retries, silent missed after the window, pause-aware. Restarts lose nothing (queue lives in SQLite).
+- ✅ Taken/Skip buttons → **silent ack** (no reply message, buttons clear, idempotent — a replayed press is ignored; ✅ can never ack a future day's dose).
+- ✅ Edit Prescription: free text → AI change-set against the current object → ambiguity → one clarifying question → FULL updated table → Apply → only future pending rows recomputed; taken/skipped history immutable.
+- ✅ Commands: /start /today /edit /prescriptions /pause /resume /cancel /delete /help. Stray free text honored as "type it in your own words" input. Webhook dedup by `update_id`; typed-YES `/delete` wipes everything in one transaction.
+- ⛔ Not built (deliberately, per design decision doc): course/expiry notifications, catch-up messages, time-zone change prompts, merged multi-prescription reminders, WhatsApp adapter.
+
+**26 tests** pass (`pytest tests/`): scheduling math, template shapes, change-set all-or-nothing validation, and two simulated-clock end-to-end flows (photo→apply→remind→ack→missed; /edit→apply→recompute) plus webhook dedup/secret and retry-expiry drills.
+
+## Run it
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env         # then fill BOT_TOKEN + AI_API_KEY (both need founder accounts)
+.venv/bin/python -m app.polling          # local dev: long-polling, no TLS needed
+```
+
+Production (webhook mode): run `uvicorn app.main:app` behind TLS (see `docker-compose.yml`; Caddy or any proxy terminates HTTPS), then register once:
+
+```bash
+python -m app.webhook_setup https://your-domain/webhook/<WEBHOOK_SECRET>
+```
+
+`GET /health` for uptime checks; the reminder loop is the dead-man's-snitch candidate (ops: deep dive §10).
+
+## Secrets the founder must supply (nothing else is external)
+
+1. **Telegram bot token** — @BotFather → /newbot (check `@ReMedBot` availability at creation; open item #1).
+2. **AI provider key** — any OpenAI-compatible vision-chat endpoint works (`AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL`). Used for exactly two call types: image extraction and edit interpretation; the AI only proposes, ordinary code validates, and nothing schedules without your explicit confirm.
+
+## Layout
+
+```
+app/
+  config.py       env-driven settings (meals/offsets/tz are per-user values in DB; these are defaults)
+  db.py           SQLite, 6 tables, plain SQL, WAL; conversation state with TTL
+  scheduling.py   expand/recompute math: meal anchor ± offset → UTC; skip-past rule; answered-dose guard
+  changesets.py   AI-proposed op validation (ambiguity→clarify), snapshot apply, one-transaction persist
+  ai.py           2 contracts: extract (image→JSON), interpret_edit (text+state→change-set)
+  rendering.py    every user-facing message (conversation-script-v0.2 templates)
+  handlers.py     router + flows: intake (A), edit (B), commands, callbacks
+  engine.py       reminder loop: due pick → render → send → ack; silent missed sweep
+  main.py         FastAPI webhook (secret token + update_id dedup) + /health
+  polling.py      local-dev entry (long-polling)
+  telegram.py     the only module that knows the Bot API (WhatsApp-ready adapter boundary)
+tests/            pytest suite (simulated clock; FakeTelegram adapter)
+```
+
+## Design decisions worth knowing
+
+- **Timezone**: the Bot API does not expose the user's timezone, so new users get `DEFAULT_TIMEZONE` (shown at confirmation, e.g. "Scheduling in IST (UTC+5:30)") and can change it via Edit Prescription ("I moved to New York") — per deep dive §5 the change recomputes future rows only.
+- **Grouped reminders**: one message per (day, slot, food); grouped slots share one "✅ Taken — all N" button (open item #2 currently: combined).
+- **Log hygiene**: no medicine names or message contents in log lines; chat_id allowed (support).
+- **Mid-day confirms** never burst old reminders: expansion skips times already past; a dose the user explicitly took/skipped is never re-reminded even if meal times change later.

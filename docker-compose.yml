@@ -1,0 +1,18 @@
+# One small VPS (~$5/mo): `docker compose up -d` + Caddy for TLS.
+# Point Caddy (or any TLS proxy) to forward to :8000, then:
+#   python -m app.webhook_setup https://your-domain/webhook/<WEBHOOK_SECRET>
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - remed-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  remed-data:

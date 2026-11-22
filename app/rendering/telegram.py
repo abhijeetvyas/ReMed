@@ -105,9 +105,20 @@ def _meal_times_block(user: dict, suffix: str = "") -> list[str]:
     ]
 
 
-def draft_message(session: dict) -> str:
+def draft_message(session: dict, duplicate_names: list[str] | None = None) -> str:
+    """duplicate_names: medicines in this draft that already have active
+    reminders (PRD: 'medicine-count reconciliation happens in the confirm
+    step') — surfaced BEFORE the confirm gate so a second photo is a
+    conscious choice, never a silent double schedule."""
     user = session["user"]
     lines = ["Here's what I read. Please check every line 👀", ""]
+    if duplicate_names:
+        lines += [
+            "⚠️ Heads up — you already have active reminders covering: "
+            + ", ".join(duplicate_names) + ".",
+            "They won't be replaced — /cancel them first if you'd rather switch.",
+            "",
+        ]
     for rx in session["prescriptions"]:
         for m in rx["medicines"]:
             if not m.get("removed"):

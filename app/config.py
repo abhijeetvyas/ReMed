@@ -97,6 +97,67 @@ class Settings:
     max_duration_days: int = field(default_factory=lambda: _int("MAX_DURATION_DAYS", 90))
     conversation_ttl_min: int = field(default_factory=lambda: _int("CONVERSATION_TTL_MIN", 30))
 
+    # Guardrails (anti-abuse, per chat — generous for real users, tight vs floods).
+    # Each photo is a paid vision call + a persisted image BLOB; each edit text a
+    # paid interpret call. Limits are hourly + daily, with a minimum gap between
+    # consecutive actions. Users verified against SUPER_USER_KEY (see /super)
+    # bypass every limit — for founder testing. Empty key = feature off.
+    photo_rate_per_hour: int = field(default_factory=lambda: _int("PHOTO_RATE_PER_HOUR", 6))
+    photo_rate_per_day: int = field(default_factory=lambda: _int("PHOTO_RATE_PER_DAY", 24))
+    photo_min_gap_seconds: int = field(default_factory=lambda: _int("PHOTO_MIN_GAP_SECONDS", 60))
+    photo_fails_per_hour: int = field(default_factory=lambda: _int("PHOTO_FAILS_PER_HOUR", 4))
+    edit_rate_per_hour: int = field(default_factory=lambda: _int("EDIT_RATE_PER_HOUR", 6))
+    edit_rate_per_day: int = field(default_factory=lambda: _int("EDIT_RATE_PER_DAY", 24))
+    edit_min_gap_seconds: int = field(default_factory=lambda: _int("EDIT_MIN_GAP_SECONDS", 60))
+    apply_rate_per_hour: int = field(default_factory=lambda: _int("APPLY_RATE_PER_HOUR", 6))
+    apply_rate_per_day: int = field(default_factory=lambda: _int("APPLY_RATE_PER_DAY", 24))
+    apply_min_gap_seconds: int = field(default_factory=lambda: _int("APPLY_MIN_GAP_SECONDS", 60))
+    super_user_key: str = field(default_factory=lambda: os.environ.get("SUPER_USER_KEY", "").strip())
+    max_text_len: int = field(default_factory=lambda: _int("MAX_TEXT_LEN", 1200))
+    max_image_mb: int = field(default_factory=lambda: _int("MAX_IMAGE_MB", 10))
+    # compression before the AI call and before persisting (see app/images.py)
+    image_max_dim_px: int = field(default_factory=lambda: _int("IMAGE_MAX_DIM_PX", 1600))
+    image_jpeg_quality: int = field(default_factory=lambda: _int("IMAGE_JPEG_QUALITY", 85))
+    # decompression-bomb guard: refuse photos whose decoded pixel count exceeds
+    # this many megapixels (Telegram itself caps photo kind at ~1280px, this is
+    # defense in depth) — see app/images.py
+    image_max_pixels_mp: float = field(default_factory=lambda: _float("IMAGE_MAX_PIXELS_MP", 25.0))
+    max_medicines_per_draft: int = field(default_factory=lambda: _int("MAX_MEDICINES_PER_DRAFT", 15))
+    max_active_prescriptions: int = field(default_factory=lambda: _int("MAX_ACTIVE_PRESCRIPTIONS", 10))
+    max_concurrent_handlers: int = field(default_factory=lambda: _int("MAX_CONCURRENT_HANDLERS", 8))
+
+    # Global AI budget (the #1 free-tier protection): the Gemini free-tier daily
+    # request pool is SHARED by every user through the one API key, and a chat's
+    # own limits say nothing about total spend. When today's ai_calls rows reach
+    # this many, new AI calls short-circuit with an "at capacity" message
+    # instead of spending (0 = off). One logical call may cost up to 3 provider
+    # attempts via the fallback chain — set the budget accordingly.
+    ai_daily_budget: int = field(default_factory=lambda: _int("AI_DAILY_BUDGET", 800))
+
+    # Capacity-triggered retention (app/retention.py): NO pruning below 80% of
+    # a store's cap; at 80% the oldest 10% is dropped (70% logs a warning
+    # first). Byte cap for ai_calls images (the heavy store); row caps for the
+    # message/activity logs. Golden set: export before prunes touch it.
+    ai_image_budget_kb: int = field(default_factory=lambda: _int("AI_IMAGE_BUDGET_KB", 1024 * 1024))
+    logs_max_rows: int = field(default_factory=lambda: _int("LOGS_MAX_ROWS", 1_000_000))
+
+    # Reminder-send pacing: the default meal grid is identical for every user,
+    # so without pacing the whole user base's reminders fire in one burst and
+    # press Telegram's ~30 msg/s global limit. Sends are spread inside the
+    # engine tick: a fixed gap between chat groups plus a small deterministic
+    # per-chat jitter (hash of chat_id, stable across restarts).
+    send_spacing_seconds: float = field(default_factory=lambda: _float("SEND_SPACING_SECONDS", 0.25))
+    send_jitter_seconds: float = field(default_factory=lambda: _float("SEND_JITTER_SECONDS", 2.0))
+
+    # Guardrails memory cap: eviction when the per-chat window table exceeds 80%
+    # of this many chats (see app/guardrails.py).
+    guardrail_window_cap: int = field(default_factory=lambda: _int("GUARDRAIL_WINDOW_CAP", 50_000))
+
+    # Auto-quarantine: this many guardrail blocks (rate-limit trips) in one hour
+    # marks the chat blocked — all further events are ignored until /unblock
+    # (founder, via /super key first).
+    auto_block_trips: int = field(default_factory=lambda: _int("AUTO_BLOCK_TRIPS", 10))
+
     # Storage / ops
     db_path: str = field(default_factory=lambda: os.environ.get("DB_PATH", "remed.db"))
     log_level: str = field(default_factory=lambda: os.environ.get("LOG_LEVEL", "INFO"))

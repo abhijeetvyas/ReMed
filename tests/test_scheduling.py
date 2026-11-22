@@ -67,7 +67,7 @@ def test_full_apply_creates_rows_and_queue(tmp_db, fixed_today):
     session = changesets.draft_session(db.get_user("111"), [
         {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
          "slots": ["dinner"], "food": "after", "duration_days": 2},
-    ])
+    ], NOW)
     with db.tx() as conn:
         affected = changesets.apply_session(conn, "111", session, NOW)
     pid = affected[0]["prescription_id"]
@@ -88,7 +88,7 @@ def test_recompute_touches_future_only(tmp_db, fixed_today):
     session = changesets.draft_session(db.get_user("111"), [
         {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
          "slots": ["dinner"], "food": "after", "duration_days": 3},
-    ])
+    ], NOW)
     with db.tx() as conn:
         pid = changesets.apply_session(conn, "111", session, NOW)[0]["prescription_id"]
 
@@ -109,6 +109,36 @@ def test_recompute_touches_future_only(tmp_db, fixed_today):
         (past["id"],))
     # dinner 20:30 +45 = 21:15 IST = 15:45 UTC — day-0 dinner stays taken, the rest shift
     assert [r["scheduled_time_utc"][:16] for r in future] == ["2026-01-21T15:45", "2026-01-22T15:45"]
+
+
+def test_start_date_uses_user_timezone_not_server_clock(tmp_db):
+    """Review E1 regression: 'start today' is the USER's date, computed from
+    their timezone — never the server's clock. At 20:30 UTC the IST date is
+    already the NEXT day; a UTC server must not shorten the course by one day."""
+    from datetime import datetime, timezone as tz
+    from app import changesets
+    db.ensure_user("111")  # default tz: Asia/Kolkata
+    server_now = datetime(2026, 1, 20, 20, 30, tzinfo=tz.utc)  # 02:00 IST on Jan 21
+    session = changesets.draft_session(db.get_user("111"), [
+        {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
+         "slots": ["breakfast"], "food": "after", "duration_days": 5},
+    ], server_now)
+    with db.tx() as conn:
+        changesets.apply_session(conn, "111", session, server_now)
+    rx = db.query_one("SELECT start_date, end_date FROM prescriptions")
+    assert rx["start_date"] == "2026-01-21"
+    assert rx["end_date"] == "2026-01-25"
+    # all 5 breakfast-after events exist (the buggy version produced 4)
+    assert db.query_one("SELECT COUNT(*) c FROM dose_events")["c"] == 5
+
+
+def test_fractional_day_courses_round_up():
+    """10 tablets at 3/day = 3.33 days → ceil 4 (truncating silently shortens
+    courses; round-up covers the full course — review E1 family)."""
+    med = scheduling.validate_medicine({"name": "X", "slots": ["dinner"], "food": "after", "days": 3.34})
+    assert med["duration_days"] == 4
+    exact = scheduling.validate_medicine({"name": "X", "slots": ["dinner"], "food": "after", "days": 7.0})
+    assert exact["duration_days"] == 7
 
 
 def test_validation_bounds(tmp_db):

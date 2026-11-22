@@ -53,7 +53,14 @@ class AIClient:
     Model fallback (founder): settings.ai_models is an ordered chain because
     each model has its own rate limit — a 429 (or 5xx/timeout) on model N
     transparently retries model N+1. The caller is told which model answered,
-    so ai_calls rows record reality, not config."""
+    so ai_calls rows record reality, not config.
+
+    Reliability contract: ANY per-model failure that is about the model
+    (unavailable, rate-limited, truncated/garbled JSON, unexpected payload
+    shape) falls through to the next model. Only a hard request failure (bad
+    key or malformed request — needs a human) aborts immediately. JSONDecodeError
+    escaping this module would bypass every handler's `except AIError` and
+    leave the user in silence (review E2)."""
 
     # 429/5xx = rate-limited or provider-side trouble; 404 = model name unknown
     # (typo, renamed, or not yet live) — all fall through to the next model.
@@ -68,7 +75,7 @@ class AIClient:
 
     async def complete_json_chain(self, content, prompt: str, max_tokens: int = 1600) -> tuple[dict, str]:
         """Try each model in the chain; return (json, model_used). Raises
-        AIError only if every model fails."""
+        AIError only if every model fails (now including unparseable output)."""
         body_base: dict = {
             "messages": [{"role": "user", "content": content}],
             "temperature": 0,
@@ -83,19 +90,29 @@ class AIClient:
                         json=body_base | {"model": model},
                         headers={"Authorization": f"Bearer {self.api_key}"},
                     )
-                    if resp.status_code in self.FALLBACK_ON:
-                        log.warning("model %s unavailable (HTTP %s) — falling back", model, resp.status_code)
-                        last_err = AIError(f"{model}: HTTP {resp.status_code}")
-                        continue
-                    if resp.status_code >= 400:
-                        raise AIError(f"{model}: HTTP {resp.status_code}")
-                    text = resp.json()["choices"][0]["message"]["content"]
-                    return _parse_json_object(text), model
-                except AIError:
-                    raise
                 except (httpx.TimeoutException, httpx.TransportError) as e:
                     log.warning("model %s network failure (%s) — falling back", model, type(e).__name__)
                     last_err = e
+                    continue
+                if resp.status_code in self.FALLBACK_ON:
+                    log.warning("model %s unavailable (HTTP %s) — falling back", model, resp.status_code)
+                    last_err = AIError(f"{model}: HTTP {resp.status_code}")
+                    continue
+                if resp.status_code >= 400:
+                    raise AIError(f"{model}: HTTP {resp.status_code}")
+                try:
+                    text = resp.json()["choices"][0]["message"]["content"]
+                except (ValueError, KeyError, IndexError, TypeError) as e:
+                    log.warning("model %s returned unusable response shape (%s) — falling back",
+                                model, type(e).__name__)
+                    last_err = e
+                    continue
+                try:
+                    return _parse_json_object(text), model  # parse failure = this model's problem
+                except AIError as e:
+                    log.warning("model %s returned unparseable JSON (%s) — falling back", model, e)
+                    last_err = e
+                    continue
         raise AIError(f"all models failed: {last_err}")
 
     # kept for back-compat; prefer complete_json_chain
@@ -113,7 +130,13 @@ def _parse_json_object(text: str) -> dict:
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end == -1:
         raise AIError("no JSON object in model output")
-    return json.loads(text[start:end + 1])
+    try:
+        return json.loads(text[start:end + 1])
+    except json.JSONDecodeError as e:
+        # braces present, contents malformed (truncation mid-token, stray text
+        # inside) — must surface as AIError so the chain falls through instead
+        # of escaping every handler's `except AIError` (review E2)
+        raise AIError(f"malformed JSON in model output: {e}") from e
 
 
 # ---------------------------------------------------------------- ① Extract

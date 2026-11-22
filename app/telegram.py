@@ -8,6 +8,8 @@ import asyncio
 
 import httpx
 
+from .config import settings
+
 log = logging.getLogger("remed.telegram")
 
 
@@ -108,6 +110,7 @@ def extract_event(update: dict) -> dict | None:
 
 async def download_photo(token: str, file_id: str) -> bytes:
     base = f"https://api.telegram.org/bot{token}"
+    max_bytes = settings.max_image_mb * 1024 * 1024
     async with httpx.AsyncClient(timeout=30) as client:
         meta = (await client.get(f"{base}/getFile", params={"file_id": file_id})).json()
         if not meta.get("ok"):
@@ -115,4 +118,10 @@ async def download_photo(token: str, file_id: str) -> bytes:
         path = meta["result"]["file_path"]
         resp = await client.get(f"{base}/file/{path}")
         resp.raise_for_status()
-        return resp.content
+        if len(resp.content) > max_bytes:
+            raise TelegramError("image too large")
+        if resp.content[:8] == b"\x89PNG\r\n\x1a\n":
+            return resp.content  # PNG magic
+        if resp.content[:3] == b"\xff\xd8\xff":
+            return resp.content  # JPEG magic
+        raise TelegramError("not an image")

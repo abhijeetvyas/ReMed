@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS users(
   offset_before_min INTEGER NOT NULL DEFAULT -15,
   offset_after_min INTEGER NOT NULL DEFAULT 45,
   paused INTEGER NOT NULL DEFAULT 0, -- user-level master switch; see prescriptions.paused
+  is_super INTEGER NOT NULL DEFAULT 0, -- verified against SUPER_USER_KEY via /super; bypasses guardrails
+  blocked INTEGER NOT NULL DEFAULT 0, -- auto-quarantine at AUTO_BLOCK_TRIPS guardrail trips; events ignored
   created_at TEXT NOT NULL,
   deleted_at TEXT
 );
@@ -101,6 +103,7 @@ CREATE TABLE IF NOT EXISTS ai_calls(
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_ai_calls_chat ON ai_calls(chat_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_calls_time ON ai_calls(created_at);  -- global daily-budget COUNT, index-only scan
 
 -- Full inbound message log (founder ask): every command / free text / photo
 -- the user sends, for debugging and future model improvement.
@@ -143,6 +146,9 @@ def init(db_path: str | None = None) -> None:
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.execute("PRAGMA foreign_keys=ON")
+        # free pruned pages back to the OS (retention.py prunes at 80% of cap);
+        # only effective for databases created with this mode (no-op otherwise)
+        _conn.execute("PRAGMA auto_vacuum=INCREMENTAL")
         _conn.executescript(SCHEMA)
         _migrate()
         _conn.commit()
@@ -158,6 +164,8 @@ def _migrate() -> None:
         "ALTER TABLE users ADD COLUMN phone TEXT",
         "ALTER TABLE users ADD COLUMN email TEXT",
         "ALTER TABLE prescriptions ADD COLUMN paused INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN is_super INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0",
     )
     for stmt in alts:
         try:
@@ -232,14 +240,17 @@ def get_user(chat_id: str) -> sqlite3.Row | None:
 def ensure_user(chat_id: str) -> sqlite3.Row:
     """Create the identity row silently on first contact (Flow 0). Every user
     gets an internal uuid `id` in addition to the channel identity (chat_id),
-    so future cross-channel / cross-table references need not key on chat_id."""
+    so future cross-channel / cross-table references need not key on chat_id.
+    The insert is conflict-safe: two near-simultaneous events from a fresh chat
+    otherwise race the existence check and one handler crashes (review E8)."""
     user = get_user(chat_id)
     if user:
         return user
     s = settings
     execute(
         "INSERT INTO users(id, channel, chat_id, timezone, meal_breakfast, meal_lunch, meal_dinner,"
-        " offset_before_min, offset_after_min, paused, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        " offset_before_min, offset_after_min, paused, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
+        " ON CONFLICT(chat_id) DO NOTHING",
         (uuid.uuid4().hex, "telegram", chat_id, s.default_timezone, s.meal_breakfast, s.meal_lunch,
          s.meal_dinner, s.offset_before_min, s.offset_after_min, 0, now_iso()),
     )

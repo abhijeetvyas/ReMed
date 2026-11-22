@@ -29,6 +29,10 @@ def e2e(tmp_db, monkeypatch):
     monkeypatch.setattr(handlers, "extract_prescription", fake_extract)
     monkeypatch.setattr(handlers, "download_photo", fake_download)
     monkeypatch.setattr(handlers, "_utcnow", lambda: NOW)  # simulated clock
+    # send pacing is separately tested in test_guardrails — keep e2e snappy
+    from app.config import settings
+    monkeypatch.setattr(settings, "send_spacing_seconds", 0)
+    monkeypatch.setattr(settings, "send_jitter_seconds", 0)
     return handlers
 
 
@@ -133,7 +137,7 @@ def test_edit_flow_full_cycle(tmp_db, tg, fixed_today, monkeypatch):
     session = changesets.draft_session(db.get_user(chat), [
         {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
          "slots": ["dinner"], "food": "after", "duration_days": 3},
-    ])
+    ], NOW)
     with db.tx() as conn:
         pid = changesets.apply_session(conn, chat, session, NOW)[0]["prescription_id"]
     old_future = db.query(
@@ -200,7 +204,7 @@ def test_pause_blocks_sending_but_events_expire_silently(tmp_db, tg, fixed_today
     session = changesets.draft_session(db.get_user(chat), [
         {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
          "slots": ["breakfast"], "food": "after", "duration_days": 2},
-    ])
+    ], NOW)
     with db.tx() as conn:
         changesets.apply_session(conn, chat, session, NOW)
     due = datetime.fromisoformat(db.query_one(
@@ -227,7 +231,7 @@ def test_send_failure_retries_then_expires_silently(tmp_db, fixed_today):
     session = changesets.draft_session(db.get_user(chat), [
         {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
          "slots": ["breakfast"], "food": "after", "duration_days": 2},
-    ])
+    ], NOW)
     with db.tx() as conn:
         changesets.apply_session(conn, chat, session, NOW)
     due = datetime.fromisoformat(db.query_one("SELECT MIN(scheduled_time_utc) t FROM dose_events")["t"])
@@ -252,7 +256,7 @@ def test_prescription_level_pause_blocks_sends(tmp_db, tg, fixed_today):
     session = changesets.draft_session(db.get_user(chat), [
         {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
          "slots": ["breakfast"], "food": "after", "duration_days": 2},
-    ])
+    ], NOW)
     with db.tx() as conn:
         changesets.apply_session(conn, chat, session, NOW)
     due = datetime.fromisoformat(db.query_one(
@@ -266,3 +270,172 @@ def test_prescription_level_pause_blocks_sends(tmp_db, tg, fixed_today):
     db.execute("UPDATE prescriptions SET paused=0 WHERE chat_id=?", (chat,))
     asyncio.run(engine.tick(tg, now=due))
     assert len(tg.buttoned) == 1  # resumed → sends
+
+
+# ---------------------------------------------------------------- review fixes
+
+def _photo_update(update_id: int, chat_id: int) -> dict:
+    return {"update_id": update_id,
+            "message": {"chat": {"id": chat_id},
+                        "photo": [{"file_id": "f", "width": 1, "height": 1}]}}
+
+
+def _callback_update(update_id: int, chat_id: int, data: str) -> dict:
+    return {"update_id": update_id,
+            "callback_query": {"id": f"cb-{update_id}", "data": data,
+                               "message": {"chat": {"id": chat_id}, "message_id": 1},
+                               "from": {"id": chat_id}}}
+
+
+def test_intake_ai_crash_still_answers(tmp_db, tg, e2e, fixed_today, monkeypatch):
+    """E2 regression: a wrong-typed AI failure (raw JSONDecodeError) previously
+    escaped every handler — the user saw '📷 Got it…' and then silence, and
+    Telegram (200 already returned) never redelivered. Now: generic failure
+    copy, and the empty draft stays open so typing still works."""
+    import asyncio
+
+    async def bad_extract(image_bytes, mime="image/jpeg"):
+        raise json.JSONDecodeError("Expecting value", "{ broken", 2)
+
+    monkeypatch.setattr(e2e, "extract_prescription", bad_extract)
+    asyncio.run(handlers.handle_event(tg, extract_event(_photo_update(1, 830))))
+    assert any("didn't work" in t for _, t in tg.texts)
+    assert db.get_state("830") is not None  # empty draft open → typed input still works
+
+
+def test_edit_ai_crash_still_answers(tmp_db, tg, e2e, fixed_today, monkeypatch):
+    """E2 regression, edit side: a live `/edit` session whose interpret call
+    explodes with a wrong-typed error still answers — the generic failure
+    voice, never silence."""
+    import asyncio
+
+    async def bad_interpret(text, context):
+        raise json.JSONDecodeError("Expecting value", "{ broken", 2)
+
+    asyncio.run(handlers.handle_event(tg, extract_event(_photo_update(1, 831))))
+    asyncio.run(handlers.handle_event(tg, extract_event(_callback_update(2, 831, "apply_draft"))))
+    monkeypatch.setattr(handlers, "interpret_edit", bad_interpret)
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        {"update_id": 3, "message": {"chat": {"id": 831}, "text": "/edit"}})))
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        {"update_id": 4, "message": {"chat": {"id": 831}, "text": "make it 5 days"}})))
+    assert any("didn't work" in t for _, t in tg.texts)
+
+
+def test_second_photo_of_same_prescription_warns_before_confirm(tmp_db, tg, e2e, fixed_today, monkeypatch):
+    """PM2 regression: the PRD's 'medicine-count reconciliation happens in the
+    confirm step'. A re-sent photo must warn about existing coverage BEFORE the
+    confirm gate — never silently schedule twice."""
+    import asyncio
+    from app.config import settings
+    monkeypatch.setattr(settings, "photo_min_gap_seconds", 0)
+    monkeypatch.setattr(settings, "apply_min_gap_seconds", 0)
+
+    asyncio.run(handlers.handle_event(tg, extract_event(_photo_update(1, 832))))
+    asyncio.run(handlers.handle_event(tg, extract_event(_callback_update(2, 832, "apply_draft"))))
+    assert len(db.active_prescriptions("832")) == 1  # first pass: no warning, gate as usual
+    first = tg.buttoned[0][1]
+    assert "already have active reminders" not in first
+
+    tg.buttoned.clear()
+    asyncio.run(handlers.handle_event(tg, extract_event(_photo_update(3, 832))))  # same prescription again
+    second = tg.buttoned[0][1]
+    assert "already have active reminders" in second          # warning block present
+    assert "Azithromycin 500" in second                       # names from live prescriptions
+    callbacks = [b["callback_data"] for row in tg.buttoned[0][2] for b in row]
+    assert "apply_draft" in callbacks                         # still confirmable — conscious choice
+
+
+def test_named_resume_after_master_pause_is_honest(tmp_db, tg, e2e, fixed_today, monkeypatch):
+    """E4 regression: '/pause' then '/resume Dolo' used to claim 'reminders
+    back on' while the master switch still blocked everything. Now it says so."""
+    import asyncio
+    from app import changesets
+    chat = "833"
+    _ = db.ensure_user(chat)
+    session = changesets.draft_session(db.get_user(chat), [
+        {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
+         "slots": ["breakfast"], "food": "after", "duration_days": 2},
+    ], NOW)
+    with db.tx() as conn:
+        changesets.apply_session(conn, chat, session, NOW)
+    due = datetime.fromisoformat(db.query_one(
+        "SELECT MIN(scheduled_time_utc) t FROM dose_events")["t"]) + timedelta(seconds=5)
+
+    for uid, msg in ((1, "/pause"), (2, "/resume Dolo")):
+        asyncio.run(handlers.handle_event(tg, extract_event(
+            {"update_id": uid, "message": {"chat": {"id": 833}, "text": msg}})))
+    reply = tg.last_text()
+    assert "master pause" in reply and "nothing sends" in reply
+    # and the engine agrees: nothing sent while the master switch is on
+    asyncio.run(engine.tick(tg, now=due))
+    assert len(tg.buttoned) == 0
+    # full /resume lifts both switches → the dose (still inside its window) sends
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        {"update_id": 3, "message": {"chat": {"id": 833}, "text": "/resume"}})))
+    asyncio.run(engine.tick(tg, now=due + timedelta(seconds=15)))
+    assert len(tg.buttoned) == 1
+
+
+def test_finished_prescriptions_expire_and_stop_counting_toward_cap(tmp_db, tg, e2e, fixed_today, monkeypatch):
+    """E3 regression: expired was never written — ended courses stayed 'active'
+    forever, and the max-active cap eventually locked loyal users out."""
+    import asyncio
+    from app import changesets, rendering
+    from app.config import settings
+    chat = "834"
+    _ = db.ensure_user(chat)
+    session = changesets.draft_session(db.get_user(chat), [
+        {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
+         "slots": ["breakfast"], "food": "after", "duration_days": 1},
+    ], NOW)
+    with db.tx() as conn:
+        changesets.apply_session(conn, chat, session, NOW)
+
+    # wind the clock past the course end (1-day course started Jan 20)
+    late = NOW + timedelta(days=2)  # Jan 22, 01:00 UTC = Jan 22 IST
+    asyncio.run(engine.tick(tg, now=late))
+    rx = db.query_one("SELECT status FROM prescriptions WHERE chat_id=?", (chat,))
+    assert rx["status"] == "expired"
+    assert any(r["action"] == "prescription_expired" for r in db.query("SELECT action FROM activity_log"))
+    assert "ended" in rendering.prescriptions_message(chat)  # /prescriptions tells the truth
+
+    # the cap counts only live courses: a finished one no longer blocks a new apply
+    monkeypatch.setattr(settings, "max_active_prescriptions", 1)
+    asyncio.run(handlers.handle_event(tg, extract_event(_photo_update(1, 834))))
+    asyncio.run(handlers.handle_event(tg, extract_event(_callback_update(2, 834, "apply_draft"))))
+    assert "✅ All set" in tg.last_text()
+
+
+def test_cancelrx_button_from_another_chat_cancels_nothing(tmp_db, tg, e2e, fixed_today):
+    """Ownership guard regression: `cancelrx:<id>` button data names the
+    prescription id — a replayed callback from a different chat must never
+    cancel someone else's course (belt-and-suspenders; buttons are
+    bot-authored per chat)."""
+    import asyncio
+    from app import changesets
+
+    def _apply(chat: str, uid: int, name: str) -> None:
+        session = changesets.draft_session(db.ensure_user(chat), [
+            {"name": name, "form": "tablet", "tablets_per_dose": 1,
+             "slots": ["breakfast"], "food": "after", "duration_days": 2},
+        ], NOW)
+        with db.tx() as conn:
+            changesets.apply_session(conn, chat, session, NOW)
+
+    _apply("840", 1, "Dolo 650")
+    _apply("840", 2, "Azithro 500")
+    rx_ids = [rx["id"] for rx in db.active_prescriptions("840")]
+    assert len(rx_ids) == 2
+
+    # a *different* chat presses chat 840's picker button → ignored, nothing cancelled
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        _callback_update(3, 841, f"cancelrx:{rx_ids[0]}"))))
+    assert len(db.active_prescriptions("840")) == 2
+    assert not any("Cancelled" in t for _, t in tg.texts)
+
+    # the owner pressing their own button cancels exactly the chosen course
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        _callback_update(4, 840, f"cancelrx:{rx_ids[0]}"))))
+    assert len(db.active_prescriptions("840")) == 1
+    assert any("Cancelled" in t for _, t in tg.texts)

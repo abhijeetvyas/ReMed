@@ -52,6 +52,9 @@ async def webhook(secret: str, request: Request) -> dict:
         return {"ok": False}
     if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != settings.webhook_secret:
         return {"ok": False}
+    # Telegram updates are small JSON; refuse oversized bodies before parsing
+    if int(request.headers.get("content-length") or 0) > 256 * 1024:
+        return {"ok": False}
     update = await request.json()
     # dedup: Telegram redelivers on non-200; drop replays by update_id watermark
     update_id = update.get("update_id")

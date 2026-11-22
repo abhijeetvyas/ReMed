@@ -5,6 +5,7 @@ offset, stored as UTC. Food never handled at reminder time; DST is safe because
 times are derived per event_date at (re)generation time.
 """
 import json
+import math
 import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -79,9 +80,13 @@ def validate_medicine(raw: dict) -> dict:
     if food not in ("before", "after"):
         raise ValidationError("food must be 'before' or 'after'")
     try:
-        days = int(raw.get("days", raw.get("duration_days", 1)))
+        days_raw = float(raw.get("days", raw.get("duration_days", 1)))
     except (TypeError, ValueError):
         raise ValidationError("days must be an integer")
+    # quantity-derived durations can be fractional (10 tablets at 3/day = 3.33);
+    # round UP — truncating would silently shorten the course (medical risk,
+    # review E1 family). Exact integers pass through untouched.
+    days = math.ceil(days_raw - 1e-9)
     if not (1 <= days <= settings.max_duration_days):
         raise ValidationError(f"days must be 1–{settings.max_duration_days}")
     return {
@@ -97,6 +102,10 @@ def validate_medicine(raw: dict) -> dict:
 def validate_draft_medicines(raw_medicines: list) -> list[dict]:
     if not isinstance(raw_medicines, list) or not raw_medicines:
         raise ValidationError("no medicines in draft")
+    # cap before validation: a hallucinating (or poisoned) model output must not
+    # be able to expand into a flood of dose_events at apply time
+    if len(raw_medicines) > settings.max_medicines_per_draft:
+        raise ValidationError(f"too many medicines in draft (max {settings.max_medicines_per_draft})")
     return [validate_medicine(m) for m in raw_medicines]
 
 

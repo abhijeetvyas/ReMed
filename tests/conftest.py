@@ -15,6 +15,15 @@ def tmp_db(tmp_path):
     db.close()
 
 
+@pytest.fixture(autouse=True)
+def reset_guardrails():
+    """Fresh rate-limit windows for every test."""
+    from app import guardrails
+    guardrails.reset()
+    yield
+    guardrails.reset()
+
+
 class FakeTelegram:
     """Records everything the handlers/engine would send."""
 
@@ -55,7 +64,12 @@ def tg():
 
 @pytest.fixture()
 def fixed_today(monkeypatch):
-    """Pin `date.today()` used for draft start dates to the test epoch (2026-01-20)."""
+    """Legacy seam: pins `changesets.date.today()` to 2026-01-20.
+
+    Draft start dates no longer read date.today() at all — they derive from an
+    explicit now_utc + the user's timezone (review E1). Call sites pass their
+    simulated clock; this patch stays only so test code that assumes the epoch
+    keeps working if date.today() is ever referenced again."""
     from datetime import date as real_date
     import app.changesets as cs
 

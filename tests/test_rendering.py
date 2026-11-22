@@ -71,7 +71,7 @@ def test_scheduled_confirmation_is_bare_ack_and_activity_logged(tmp_db, fixed_to
     session = changesets.draft_session(db.get_user("111"), [
         med(name="Dolo 650", slots=["dinner"], days=2),
         med(name="Azithromycin 500", slots=["dinner"], days=4),
-    ])
+    ], now)
     with db.tx() as conn:
         affected = changesets.apply_session(conn, "111", session, now)
     pids = [a["prescription_id"] for a in affected]

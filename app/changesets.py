@@ -4,11 +4,11 @@ and persists on Apply — one transaction. The AI never touches live data.
 """
 import json
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import db, scheduling
-from .config import SLOTS
+from .config import SLOTS, settings
 from .scheduling import ValidationError, parse_hhmm, fmt_hhmm, iso_utc
 
 
@@ -37,12 +37,23 @@ def settings_time_grid() -> int:
 
 # ---------------------------------------------------------------- snapshots
 
-def draft_session(user_row, medicines: list[dict]) -> dict:
+def _user_today(session_user: dict | None, now_utc: datetime) -> date:
+    """The USER's calendar date right now (their timezone), never the server's.
+    A UTC server and an IST user disagree between 00:00–05:30 IST; using the
+    server's date here silently shortens courses by one day (see review E1)."""
+    tz = (session_user or {}).get("timezone") or settings.default_timezone
+    return scheduling.today_local(tz, now_utc)
+
+
+def draft_session(user_row, medicines: list[dict], now_utc: datetime | None = None) -> dict:
     """Unapplied intake draft (also used after a failed extract, with [])."""
-    today = date.today().isoformat()
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc)
+    user = db.user_freezes_json(user_row) if user_row else {}
+    today = _user_today(user, now_utc).isoformat()
     return {
         "type": "draft",
-        "user": db.user_freezes_json(user_row) if user_row else {},
+        "user": user,
         "prescriptions": [{
             "id": "draft", "start_date": today, "end_date": None,
             "status": "active", "medicines": medicines,
@@ -55,6 +66,32 @@ def live_session(chat_id: str) -> dict:
     for rx in ctx["prescriptions"]:
         rx["status"] = "active"
     return {"type": "live", "user": ctx["user"], "prescriptions": ctx["prescriptions"]}
+
+
+def duplicate_medicine_names(chat_id: str, session: dict) -> list[str]:
+    """Names in a NEW draft that already have coverage in the user's ACTIVE
+    prescriptions (the PRD's 'medicine-count reconciliation at the confirm
+    step' — a second photo must be a conscious choice, never a silent double
+    reminder). lenient same matching as the edit-matcher: containment either
+    way. Empty list = nothing overlaps."""
+    existing = [m["name"] for rx in db.active_prescriptions(chat_id)
+                for m in db.medicines_for(rx["id"])]
+    if not existing:
+        return []
+    out: list[str] = []
+    for rx in session["prescriptions"]:
+        for m in rx["medicines"]:
+            if m.get("removed") or m["name"] in out:
+                continue
+            n = _norm(m["name"])
+            if not n:
+                continue
+            for ex in existing:
+                en = _norm(ex)
+                if n in en or (len(en) >= 4 and en in n):
+                    out.append(m["name"])
+                    break
+    return out
 
 
 # ---------------------------------------------------------------- matching
@@ -92,7 +129,7 @@ def _require_medicine(ops: list[dict], op: dict) -> tuple[dict, dict]:
 
 # ---------------------------------------------------------------- validation & application to snapshot
 
-def validate_operation(session: dict, op: dict) -> None:
+def validate_operation(session: dict, op: dict, now_utc: datetime | None = None) -> None:
     """Validate + apply one operation to the session snapshot (raises Ambiguous / BadOperation)."""
     kind = op.get("op")
     if kind == "update_medicine":
@@ -101,7 +138,7 @@ def validate_operation(session: dict, op: dict) -> None:
         m.update(clean)
     elif kind == "add_medicine":
         clean = scheduling.validate_medicine(op.get("fields") or {})
-        rx = _resolve_prescription(session, op.get("prescription"))
+        rx = _resolve_prescription(session, op.get("prescription"), now_utc)
         if any(not mm.get("removed") and _norm(mm["name"]) == _norm(clean["name"]) for mm in rx["medicines"]):
             raise BadOperation(f"'{clean['name']}' is already in this prescription")
         clean.pop("id", None)
@@ -162,30 +199,32 @@ def validate_operation(session: dict, op: dict) -> None:
         raise BadOperation(f"unknown operation '{kind}'")
 
 
-def _resolve_prescription(session: dict, hint: str | None) -> dict:
+def _resolve_prescription(session: dict, hint: str | None, now_utc: datetime | None = None) -> dict:
     """Which prescription does add_medicine belong to?"""
     active = [rx for rx in session["prescriptions"] if rx.get("status") != "cancelled"]
     if hint:
         h = _norm(hint)
         if h == "new":
-            return _new_prescription(session)
+            return _new_prescription(session, now_utc)
         for rx in active:
             if rx["id"] == hint or any(not m.get("removed") and h in _norm(m["name"]) for m in rx["medicines"]):
                 return rx
     if len(active) == 1:
         return active[0]
-    return _new_prescription(session)
+    return _new_prescription(session, now_utc)
 
 
-def _new_prescription(session: dict) -> dict:
-    today = date.today()
-    rx = {"id": "new-" + uuid.uuid4().hex[:8], "start_date": today.isoformat(),
+def _new_prescription(session: dict, now_utc: datetime | None = None) -> dict:
+    if now_utc is None:
+        now_utc = datetime.now(timezone.utc)
+    rx = {"id": "new-" + uuid.uuid4().hex[:8],
+          "start_date": _user_today(session.get("user"), now_utc).isoformat(),
           "end_date": None, "status": "active", "medicines": []}
     session["prescriptions"].append(rx)
     return rx
 
 
-def apply_operations(session: dict, ops: list) -> None:
+def apply_operations(session: dict, ops: list, now_utc: datetime | None = None) -> None:
     """Validate every operation first (all-or-nothing snapshot edit), then apply."""
     if not isinstance(ops, list):
         raise BadOperation("operations must be a list")
@@ -194,7 +233,7 @@ def apply_operations(session: dict, ops: list) -> None:
     for op in ops:
         if not isinstance(op, dict):
             raise BadOperation("bad operation")
-        validate_operation(candidate, op)
+        validate_operation(candidate, op, now_utc)
     # keep any pre-existing user_changed flag
     candidate["user_changed"] = candidate.pop("user_changed", session.get("user_changed", False))
     session.clear()
@@ -215,10 +254,11 @@ def apply_session(conn, chat_id: str, session: dict, now_utc) -> list[dict]:
     user = db.get_user(chat_id)
     if user is None:
         conn.execute(
-            "INSERT INTO users(chat_id, timezone, meal_breakfast, meal_lunch, meal_dinner,"
-            " offset_before_min, offset_after_min, paused, created_at) VALUES(?,?,?,?,?,?,?,0,?)",
-            (chat_id, s["timezone"], s["meals"]["breakfast"], s["meals"]["lunch"], s["meals"]["dinner"],
-             s["offset_before_min"], s["offset_after_min"], db.now_iso()),
+            "INSERT INTO users(id, chat_id, timezone, meal_breakfast, meal_lunch, meal_dinner,"
+            " offset_before_min, offset_after_min, paused, created_at) VALUES(?,?,?,?,?,?,?,?,0,?)"
+            " ON CONFLICT(chat_id) DO NOTHING",
+            (uuid.uuid4().hex, chat_id, s["timezone"], s["meals"]["breakfast"], s["meals"]["lunch"],
+             s["meals"]["dinner"], s["offset_before_min"], s["offset_after_min"], db.now_iso()),
         )
     elif session.get("user_changed"):
         conn.execute(

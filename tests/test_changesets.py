@@ -14,7 +14,7 @@ def _live_session(tmp_db):
          "slots": ["breakfast", "lunch", "dinner"], "food": "after", "duration_days": 3},
         {"name": "DOXICILLIN 500", "form": "capsule", "tablets_per_dose": 1,
          "slots": ["dinner"], "food": "before", "duration_days": 5},
-    ])
+    ], NOW)
     with db.tx() as conn:
         pid = changesets.apply_session(conn, "111", session, NOW)[0]["prescription_id"]
     return changesets.live_session("111"), pid

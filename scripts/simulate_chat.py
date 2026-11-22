@@ -145,13 +145,13 @@ async def fake_extract(image_bytes, mime="image/jpeg"):
     _extract_calls[0] += 1
     n = _extract_calls[0]
     if n == 1:
-        return {"medicines": MULTI, "notes": []}
+        return {"medicines": MULTI, "notes": []}, "fake-model"
     if n == 2:
-        return {"medicines": SINGLE, "notes": []}
-    return UNREADABLE
+        return {"medicines": SINGLE, "notes": []}, "fake-model"
+    return UNREADABLE, "fake-model"
 
 
-async def fake_interpret(user_text_arg, context):
+def _interpret_reply(user_text_arg, context):
     t = user_text_arg.lower()
     if "azithromycin" in t and "before" in t:
         return {"operations": [{"op": "update_medicine", "target": "azithromycin",
@@ -178,6 +178,10 @@ async def fake_interpret(user_text_arg, context):
                                            "food": "after", "days": 3}}], "clarify": None}
     # gibberish (edit & stray): nothing mappable
     return {"operations": [], "clarify": None}
+
+
+async def fake_interpret(user_text_arg, context):
+    return _interpret_reply(user_text_arg, context), "fake-model"
 
 
 handlers.extract_prescription = fake_extract

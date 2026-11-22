@@ -46,16 +46,38 @@ def _float(name: str, default: float) -> float:
         return default
 
 
+_GEMINI_CHAIN = "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-2.5-flash-lite"
+
+
+def _ai_models() -> list[str]:
+    """Model fallback chain: AI_MODELS (comma-separated). Falls back to the old
+    single AI_MODEL var, else the default Gemini chain."""
+    raw = os.environ.get("AI_MODELS", "").strip()
+    if raw:
+        return [m.strip() for m in raw.split(",") if m.strip()]
+    legacy = os.environ.get("AI_MODEL", "").strip()
+    if legacy:
+        return [legacy]
+    return [m for m in _GEMINI_CHAIN.split(",") if m]
+
+
 @dataclass
 class Settings:
     # Telegram (founder account — see README)
     bot_token: str = field(default_factory=lambda: os.environ.get("BOT_TOKEN", ""))
     webhook_secret: str = field(default_factory=lambda: os.environ.get("WEBHOOK_SECRET", "remed-dev-secret"))
 
-    # AI layer: any OpenAI-compatible provider (OpenAI, Mistral, Groq, OpenRouter…)
-    ai_base_url: str = field(default_factory=lambda: os.environ.get("AI_BASE_URL", "https://api.mistral.ai/v1"))
-    ai_api_key: str = field(default_factory=lambda: os.environ.get("AI_API_KEY", ""))
-    ai_model: str = field(default_factory=lambda: os.environ.get("AI_MODEL", "mistral-medium-latest"))
+    # AI layer: any OpenAI-compatible provider. Default: Google Gemini via its
+    # OpenAI-compatible endpoint (key from AI Studio). A FALLBACK CHAIN of
+    # models handles per-model rate limits: try in order, fall through on
+    # 429/5xx/timeout. Chain is data (environment), not code — add models freely.
+    ai_base_url: str = field(default_factory=lambda: os.environ.get(
+        "AI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"))
+    ai_api_key: str = field(default_factory=lambda: os.environ.get(
+        "GOOGLE_AI_API_KEY", "") or os.environ.get("AI_API_KEY", ""))
+    ai_models: list[str] = field(default_factory=_ai_models)
+    # deprecated single-model var, kept as fallback when AI_MODELS is unset
+    ai_model: str = field(default_factory=lambda: os.environ.get("AI_MODEL", ""))
 
     # Defaults a new user starts with (per-user values — nothing hard-coded in logic)
     default_timezone: str = field(default_factory=lambda: os.environ.get("DEFAULT_TIMEZONE", "Asia/Kolkata"))
@@ -81,7 +103,7 @@ class Settings:
 
     @property
     def ai_configured(self) -> bool:
-        return bool(self.ai_api_key and self.ai_model)
+        return bool(self.ai_api_key and self.ai_models)
 
 
 settings = Settings()

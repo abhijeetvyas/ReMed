@@ -54,17 +54,19 @@ async def handle_event(tg: Telegram, event: dict) -> None:
 # ---------------------------------------------------------------- AI call wrappers (logged for the golden set)
 
 async def _call_extract_logged(chat_id: str, image: bytes) -> dict:
-    """extract ① with full input/output persisted to ai_calls."""
+    """extract ① with full input/output persisted to ai_calls (model = the one
+    in the fallback chain that actually answered)."""
     import time
     t0 = time.perf_counter()
     try:
-        out = await extract_prescription(image)
-        db.log_ai_call(chat_id, "extract", model=settings.ai_model, input_image=image,
+        out, model = await extract_prescription(image)
+        db.log_ai_call(chat_id, "extract", model=model, input_image=image,
                        output=json.dumps(out), ok=True,
                        latency_ms=int((time.perf_counter() - t0) * 1000))
         return out
     except Exception as e:
-        db.log_ai_call(chat_id, "extract", model=settings.ai_model, input_image=image,
+        db.log_ai_call(chat_id, "extract", model=settings.ai_models[0] if settings.ai_models else None,
+                       input_image=image,
                        ok=False, error=f"{type(e).__name__}: {e}",
                        latency_ms=int((time.perf_counter() - t0) * 1000))
         raise
@@ -75,14 +77,14 @@ async def _call_interpret_logged(chat_id: str, text: str, context: dict) -> dict
     import time
     t0 = time.perf_counter()
     try:
-        out = await interpret_edit(text, context)
-        db.log_ai_call(chat_id, "interpret", model=settings.ai_model,
+        out, model = await interpret_edit(text, context)
+        db.log_ai_call(chat_id, "interpret", model=model,
                        input_text=json.dumps({"request": text, "context": context}),
                        output=json.dumps(out), ok=True,
                        latency_ms=int((time.perf_counter() - t0) * 1000))
         return out
     except Exception as e:
-        db.log_ai_call(chat_id, "interpret", model=settings.ai_model,
+        db.log_ai_call(chat_id, "interpret", model=settings.ai_models[0] if settings.ai_models else None,
                        input_text=json.dumps({"request": text, "context": context}),
                        ok=False, error=f"{type(e).__name__}: {e}",
                        latency_ms=int((time.perf_counter() - t0) * 1000))

@@ -48,27 +48,57 @@ class AIError(Exception):
 
 class AIClient:
     """Provider-agnostic client for the single required capability:
-    chat completion with optional vision input, JSON out."""
+    chat completion with optional vision input, JSON out.
 
-    def __init__(self, base_url: str | None = None, api_key: str | None = None, model: str | None = None):
+    Model fallback (founder): settings.ai_models is an ordered chain because
+    each model has its own rate limit — a 429 (or 5xx/timeout) on model N
+    transparently retries model N+1. The caller is told which model answered,
+    so ai_calls rows record reality, not config."""
+
+    FALLBACK_ON = (429, 500, 502, 503, 504)  # rate-limited or provider-side trouble
+
+    def __init__(self, base_url: str | None = None, api_key: str | None = None,
+                 models: list[str] | None = None):
         self.base_url = (base_url or settings.ai_base_url).rstrip("/")
         self.api_key = api_key or settings.ai_api_key
-        self.model = model or settings.ai_model
+        self.models = models or settings.ai_models
 
-    async def _complete_json(self, content, prompt: str, max_tokens: int = 1600) -> dict:
-        body: dict = {
-            "model": self.model,
+    async def complete_json_chain(self, content, prompt: str, max_tokens: int = 1600) -> tuple[dict, str]:
+        """Try each model in the chain; return (json, model_used). Raises
+        AIError only if every model fails."""
+        body_base: dict = {
             "messages": [{"role": "user", "content": content}],
             "temperature": 0,
             "max_tokens": max_tokens,
         }
+        last_err: Exception | None = None
         async with httpx.AsyncClient(timeout=90) as client:
-            headers = {"Authorization": f"Bearer {self.api_key}"}
-            resp = await client.post(f"{self.base_url}/chat/completions", json=body, headers=headers)
-            if resp.status_code >= 400:
-                raise AIError(f"AI provider HTTP {resp.status_code}")
-            text = resp.json()["choices"][0]["message"]["content"]
-        return _parse_json_object(text)
+            for model in self.models:
+                try:
+                    resp = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        json=body_base | {"model": model},
+                        headers={"Authorization": f"Bearer {self.api_key}"},
+                    )
+                    if resp.status_code in self.FALLBACK_ON:
+                        log.warning("model %s unavailable (HTTP %s) — falling back", model, resp.status_code)
+                        last_err = AIError(f"{model}: HTTP {resp.status_code}")
+                        continue
+                    if resp.status_code >= 400:
+                        raise AIError(f"{model}: HTTP {resp.status_code}")
+                    text = resp.json()["choices"][0]["message"]["content"]
+                    return _parse_json_object(text), model
+                except AIError:
+                    raise
+                except (httpx.TimeoutException, httpx.TransportError) as e:
+                    log.warning("model %s network failure (%s) — falling back", model, type(e).__name__)
+                    last_err = e
+        raise AIError(f"all models failed: {last_err}")
+
+    # kept for back-compat; prefer complete_json_chain
+    async def _complete_json(self, content, prompt: str, max_tokens: int = 1600) -> dict:
+        obj, _ = await self.complete_json_chain(content, prompt, max_tokens)
+        return obj
 
 
 def _parse_json_object(text: str) -> dict:
@@ -85,8 +115,8 @@ def _parse_json_object(text: str) -> dict:
 
 # ---------------------------------------------------------------- ① Extract
 
-async def extract_prescription(image_bytes: bytes, mime: str = "image/jpeg") -> dict:
-    """Image → medicines JSON. Raises AIError/ValidationError on failure."""
+async def extract_prescription(image_bytes: bytes, mime: str = "image/jpeg") -> tuple[dict, str]:
+    """Image → (medicines JSON, model_used). Raises AIError if the whole chain fails."""
     if not settings.ai_configured:
         raise AIError("AI provider not configured")
     client = AIClient()
@@ -95,15 +125,15 @@ async def extract_prescription(image_bytes: bytes, mime: str = "image/jpeg") -> 
         {"type": "text", "text": EXTRACT_PROMPT},
         {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
     ]
-    return await client._complete_json(content, EXTRACT_PROMPT)
+    return await client.complete_json_chain(content, EXTRACT_PROMPT)
 
 
 # ---------------------------------------------------------------- ② Interpret edit
 
-async def interpret_edit(user_text: str, current_context: dict) -> dict:
-    """Free text + current structured state → change-set JSON (or clarify)."""
+async def interpret_edit(user_text: str, current_context: dict) -> tuple[dict, str]:
+    """Free text + current structured state → (change-set JSON, model_used)."""
     if not settings.ai_configured:
         raise AIError("AI provider not configured")
     client = AIClient()
     prompt = interpret_prompt() + _edit_context_block(current_context) + "\n\nUSER REQUEST:\n" + user_text
-    return await client._complete_json(prompt, prompt)
+    return await client.complete_json_chain(prompt, prompt)

@@ -51,7 +51,7 @@ ReMed/
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env         # then fill BOT_TOKEN + AI_API_KEY (both need founder accounts)
+cp .env.example .env         # then fill BOT_TOKEN + GOOGLE_AI_API_KEY (both need founder accounts)
 .venv/bin/python -m app.polling          # local dev: long-polling, no TLS needed
 ```
 
@@ -66,7 +66,7 @@ python -m app.webhook_setup https://your-domain/webhook/<WEBHOOK_SECRET>
 ## Secrets the founder must supply (nothing else is external)
 
 1. **Telegram bot token** — @BotFather → /newbot (check `@ReMedBot` availability at creation; open item #1).
-2. **AI provider key** — any OpenAI-compatible vision-chat endpoint works (`AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL`). Used for exactly two call types: image extraction and edit interpretation; the AI only proposes, ordinary code validates, and nothing schedules without your explicit confirm.
+2. **AI provider key** — Google Gemini by default (OpenAI-compatible endpoint): set `GOOGLE_AI_API_KEY` from [AI Studio](https://aistudio.google.com/apikey). The model fallback chain (`AI_MODELS`, comma-separated, tried in order on 429/5xx/timeouts) defaults to `gemini-3.5-flash-lite → gemini-3.1-flash-lite → gemini-2.5-flash-lite`. Any OpenAI-compatible vision-chat endpoint works via `AI_BASE_URL`/`AI_API_KEY`. Used for exactly two call types: image extraction and edit interpretation; the AI only proposes, ordinary code validates, and nothing schedules without your explicit confirm.
 
 ## Layout
 

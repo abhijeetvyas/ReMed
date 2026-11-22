@@ -21,7 +21,7 @@ SAMPLE = {"medicines": [
 @pytest.fixture()
 def e2e(tmp_db, monkeypatch):
     async def fake_extract(image_bytes, mime="image/jpeg"):
-        return SAMPLE
+        return SAMPLE, "fake-model"
 
     async def fake_download(token, file_id):
         return b"not-a-real-image"
@@ -142,8 +142,9 @@ def test_edit_flow_full_cycle(tmp_db, tg, fixed_today, monkeypatch):
 
     async def fake_interpret(text, ctx):
         assert ctx["prescriptions"][0]["medicines"][0]["name"] == "Dolo 650"
-        return {"operations": [{"op": "update_medicine", "target": "dolo",
-                                "fields": {"duration_days": 5, "food": "before"}}], "clarify": None}
+        return ({"operations": [{"op": "update_medicine", "target": "dolo",
+                                 "fields": {"duration_days": 5, "food": "before"}}], "clarify": None},
+                "fake-model")
 
     monkeypatch.setattr(handlers, "interpret_edit", fake_interpret)
     for uid, msg in ((1, "/edit"), (2, "Dolo is actually 5 days and before food")):

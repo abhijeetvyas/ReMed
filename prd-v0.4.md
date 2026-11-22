@@ -56,7 +56,7 @@ All out-of-scope items above, plus: merged reminders across active prescriptions
 ## Non-functional requirements
 - **Correctness over cleverness.** Every mutation (OCR intake or AI edit) passes the confirmation gate.
 - **Deliverability.** Reminder reliabilityengineering: delivery acknowledgment, downtime recovery (silently, user notified later), per-user timezone storage, server-timezone discipline.
-- **Privacy.** Minimal PII (chat ID); images deleted after transcription; bounded retention; /delete immediate.
+- **Privacy.** Minimal PII (chat ID); prescription photos and AI inputs/outputs **retained in a local `ai_calls` log** to improve extraction (golden dataset) and for debugging — never shared, wiped by /delete; bounded retention; /delete immediate. *(Rev A: supersedes "images deleted after transcription" — founder call, needed for model evaluation.)*
 - **Cost.** Free/cheap hosting; OCR order of ₹ 1–5 per doc; one LLM call per edit iteration.
 - **No install.** Works entirely inside the chat; onboarding is one message.
 

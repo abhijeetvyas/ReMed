@@ -145,8 +145,8 @@ Unparseable input → generic failure copy, then Retry loop until [ ✅ Apply ].
 | /today | Today's remaining slots and times |
 | /edit | Alias for Edit Prescription (Flow 5) |
 | /prescriptions | My prescriptions: active + expired, with date ranges |
-| /pause | Pause ALL reminders (travel, hospital, etc.). Edits still allowed. |
-| /resume | Un-pause |
+| /pause | Pause reminders — all prescriptions, or just one (`/pause Azithro`) (travel, hospital…). Edits still allowed. |
+| /resume | Un-pause (same, `/resume Azithro` or `/resume`) |
 | /cancel [name] | Cancel one prescription's reminders entirely |
 | /delete | Delete ALL my data (typed "YES" confirmation) |
 | /help | Show this list |
@@ -160,7 +160,7 @@ Notes:
 - One reminder per dose slot; grouped by time; no reply messages on taken/skip.
 - Natural message volume: up to ~6 reminders/day (before-food × 3 meals + after-food × 3 meals) plus confirmations. No artificial cap below that.
 - All edits from the authenticated chat only; phone number never required.
-- Images deleted after transcription; /delete honored immediately.
+- Prescription photos + AI inputs/outputs retained in the internal `ai_calls` log (rev A, superseded the old delete-after-transcription rule) — never shared, wiped by /delete.
 
 ## Parked as future improvements (explicitly NOT in this MVP)
 - Course-completion and expiry notifications ("last dose of Dolo 650", "prescription finished")

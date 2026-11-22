@@ -66,28 +66,35 @@ Adherence definition (for the future doctor product): acknowledged within window
 
 ## 7. Table definitions (exact fields)
 ```
-users(chat_id TEXT PK, timezone TEXT NOT NULL, meal_breakfast TIME, meal_lunch TIME,
-      meal_dinner TIME, offset_before_min INT DEFAULT -15, offset_after_min INT DEFAULT 45,
+users(chat_id TEXT PK, id TEXT UNIQUE [internal uuid], channel TEXT DEFAULT 'telegram',
+      full_name/phone/email TEXT NULL [future PII, unused in MVP], timezone TEXT NOT NULL,
+      meal_breakfast TIME, meal_lunch TIME, meal_dinner TIME,
+      offset_before_min INT DEFAULT -15, offset_after_min INT DEFAULT 45,
       paused BOOLEAN DEFAULT false, created_at, deleted_at NULL)
 prescriptions(id UUID PK, chat_id FK→users, start_date DATE, end_date DATE,
-      status TEXT CHECK draft|active|cancelled|expired, image_deleted BOOLEAN,
+      status TEXT CHECK draft|active|cancelled|expired, paused BOOLEAN DEFAULT false,
       created_at)
 medicines(id UUID PK, prescription_id FK, name TEXT, form TEXT,
       tablets_per_dose NUMERIC DEFAULT 1, slots TEXT [json array],
-      food TEXT before|after, duration_days INT, created_at)
+      food TEXT before|after, duration_days INT, removed BOOLEAN, created_at)
 dose_events(id UUID PK, medicine_id FK, chat_id FK, event_date DATE, slot TEXT,
       scheduled_time_utc TIMESTAMPTZ, status TEXT pending|taken|skipped|missed,
-      responded_at TIMESTAMPTZ NULL, reminder_message_id NULL)
+      responded_at TIMESTAMPTZ NULL, reminder_message_id NULL, reminder_group TEXT)
 reminder_queue(dose_event_id PK/FK, chat_id, send_at TIMESTAMPTZ,
-      state TEXT pending|sent|failed|expired, attempts INT, last_error NULL)
+      state TEXT pending|sending|sent|failed|expired, attempts INT, last_error NULL)
 conversation_state(chat_id PK, state TEXT, payload JSON, expires_at)
+ai_logs: ai_calls(id PK, chat_id, kind extract|interpret, model, input_text,
+      input_image BLOB, output JSON, ok, error, latency_ms, created_at)
+user_logs: user_messages(id PK, chat_id, kind command|free_text|photo, text, created_at)
 ```
-(6 tables total; the sixth is conversation state.)
+(6 data tables + 2 log tables + meta.) Pause note: `prescriptions.paused` is the
+per-prescription switch (founder rev A); `users.paused` stays as the master
+switch covering prescriptions added while everything was paused.
 Indexes: reminder_queue(send_at, state); dose_events(chat_id, event_date); medicines(prescription_id).
 
 ## 8. Reminder engine loop
-Every 30–60 s (single async task, DB-backed so restart-safe):
-1. `SELECT due reminders (send_at ≤ now, state = pending, chat not paused) LIMIT 50` (marked in-flight to avoid double-send).
+Every 15 min (`TICK_SECONDS`, same 15-minute grid as all dose times; single async task, DB-backed so restart-safe):
+1. `SELECT due reminders (send_at ≤ now, state = pending, chat not paused, prescription not paused) LIMIT 200` (marked in-flight to avoid double-send).
 2. Render template from dose_event + medicine (+ slot heading, per conversation-script-v0.2).
 3. Send via adapter with buttons (Taken / Skip). HTTP ok + Bot API `ok:true` = delivered → state = sent, store message_id.
 4. Delivery failure → ≤ 3 attempts with backoff inside the slot window → else state = expired, silently. No user-facing catch-up messages in MVP (deferred).
@@ -95,8 +102,8 @@ Every 30–60 s (single async task, DB-backed so restart-safe):
 6. Timezone-shift edit regenerates future send_at values; DST is safe because send_at is derived from anchor + user tz at (re)generation time, not from a stored fixed offset.
 
 ## 9. Privacy / retention mechanics
-- Image transcribed → deleted immediately once the draft is persisted;
-- `/delete` = one transaction: delete all rows for that chat (user, prescriptions, medicines, dose_events, queue, state). Typed "YES" gate in chat.
+- Prescription images **kept**: every extraction stores the photo bytes + raw model JSON in the `ai_calls` table (input, output, model, latency, ok/error) — the golden dataset for prompt/model improvement. Local-only, never shared. *(Rev A: supersedes "deleted after transcription"; founder call.)*
+- `/delete` = one transaction: delete all rows for that chat (user, prescriptions, medicines, dose_events, queue, state, ai_calls, user_messages). Typed "YES" gate in chat.
 - Log hygiene: no medicine names in log lines by default; chat_id allowed (needed for support).
 - Export: out of scope; trivial later since everything keys off chat_id.
 

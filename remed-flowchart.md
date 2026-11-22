@@ -60,10 +60,11 @@ Legend: [User-facing] · [AI] · [Storage] · [Infra] · 🔒 = human confirmati
    taken/skipped history is IMMUTABLE (adherence record stays honest)
 ```
 
-## 4 · Flow C — Reminder tick (self-running, every ~1 min)
+## 4 · Flow C — Reminder tick (self-running, every 15 min)
 
 ```
-1. Engine queries reminder_queue:  send_at ≤ now · state=pending · user not paused
+1. Engine queries reminder_queue:  send_at ≤ now · state=pending
+   · user not paused · prescription not paused (prescriptions.paused, rev A)
    (queue lives in the DB → restarts lose nothing)
 2. Render template: slot heading + medicine lines; grouped per slot (one message)
 3. Send via adapter + delivery ack
@@ -79,19 +80,23 @@ Legend: [User-facing] · [AI] · [Storage] · [Infra] · 🔒 = human confirmati
 
 ```
 ┌ users ───────────────────────────────────────────────────────────────────┐
-│ chat_id 🔑 (=auth) · timezone (IANA, auto-detected)                      │
-│ meal_breakfast/lunch/dinner (8:00/14:00/19:00 default)                   │
-│ offset_before/after_min (−15/+45) · paused (blocks reminders, not edits) │
+│ chat_id 🔑 (=auth) · id (internal uuid) · channel                        │
+│ timezone (IANA; menu default, not auto-detected — Bot API can't)         │
+│ meal_breakfast/lunch/dinner (8:00/14:00/19:00 default, 15-min grid)      │
+│ offset_before/after_min (−15/+45) · paused (master switch)               │
 └──────────────────────────────────────────────────────────────────────────┘
 ┌ prescriptions ───────────────────────────────────────────────────────────┐
 │ id 🔑 · chat_id (FK) · start_date (default today)                        │
 │ end_date = start + max(days) − 1 · status: active | expired | cancelled  │
-│ image_deleted (photo removed right after transcription)                  │
+│ paused (prescription-level pause, rev A)                                 │
 └──────────────────────────────────────────────────────────────────────────┘
 ┌ medicines ───────────────────────────────────────────────────────────────┐
 │ id 🔑 · prescription_id (FK) · name · form · tablets_per_dose (default 1)│
-│ slots · food (before/after) · duration_days (per-medicine!)              │
+│ slots · food (before/after) · duration_days (per-medicine!) · removed    │
 └──────────────────────────────────────────────────────────────────────────┘
++ log tables (rev A): ai_calls ( every AI input incl. photo bytes + output +
+  model/latency/ok — golden dataset; supersedes "images deleted after
+  transcription" ) · user_messages (every inbound command/free text/photo)
                 │  expanded AT APPLY TIME (the key mechanic) ↓
 ┌ dose_events ─────────────────────────────────────────────────────────────┐
 │ id 🔑 · medicine_id · event_date · slot · scheduled_time (UTC, precomp.) │

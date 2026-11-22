@@ -15,7 +15,7 @@ One small backend service. Five moving parts, nothing more:
 ## Data model (5 tables)
 | Table | Holds | Purpose |
 |---|---|---|
-| **users** | chat_id, timezone, 3 meal times, −15/+45 offsets, paused flag | One row per chat; the identity/auth record |
+| **users** | chat_id, internal uuid id, channel, timezone, 3 meal times, −15/+45 offsets, paused flag (master switch; per-prescription pause lives on `prescriptions.paused`) | One row per chat; the identity/auth record |
 | **prescriptions** | id, user, start_date, end_date, status (active / expired / cancelled) | One object per photo-confirmed prescription |
 | **medicines** | prescription_id, name, form, tablets-per-dose (default 1), slots, before/after food, days | The confirmed line items |
 | **dose_events** | medicine, date, slot, scheduled_time, status (pending / taken / skipped) | The expanded schedule — one row per reminder moment; this is where raw feedback is recorded |

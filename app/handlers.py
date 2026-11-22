@@ -152,16 +152,23 @@ async def _handle_command(tg: Telegram, chat_id: str, text: str) -> None:
                 await tg.send_text(chat_id, f"I couldn't find an active prescription containing '{arg}'.")
                 return
             labels = []
+            rx_ids = []
             with db.tx() as conn:
                 for rx in chosen:
                     conn.execute("UPDATE prescriptions SET paused=? WHERE id=?", (val, rx["id"]))
                     labels += [m["name"] for m in db.medicines_for(rx["id"])]
+                    rx_ids.append(rx["id"])
+                db.log_activity(conn, chat_id,
+                                "prescriptions_paused" if val else "prescriptions_resumed",
+                                {"scope": "named", "match": arg, "prescription_ids": rx_ids})
             word = "reminders off" if val else "reminders back on"
             icon = "⏸" if val else "▶️"
             await tg.send_text(chat_id, f"{icon} {word} — {', '.join(sorted(set(labels)))}.")
         else:
             db.execute("UPDATE users SET paused=? WHERE chat_id=?", (val, chat_id))
             db.execute("UPDATE prescriptions SET paused=? WHERE chat_id=? AND status='active'", (val, chat_id))
+            db.log_activity_now(chat_id, "prescriptions_paused" if val else "prescriptions_resumed",
+                                {"scope": "all"})
             if val:
                 await tg.send_text(chat_id, "⏸ Reminders paused for all your prescriptions. Your schedules are "
                                             "untouched — /resume any time. You can still edit your prescription.")
@@ -370,6 +377,7 @@ async def _handle_delete_confirm(tg: Telegram, chat_id: str, text: str) -> None:
             conn.execute("DELETE FROM conversation_state WHERE chat_id=?", (chat_id,))
             conn.execute("DELETE FROM user_messages WHERE chat_id=?", (chat_id,))
             conn.execute("DELETE FROM ai_calls WHERE chat_id=?", (chat_id,))
+            conn.execute("DELETE FROM activity_log WHERE chat_id=?", (chat_id,))
             conn.execute("DELETE FROM users WHERE chat_id=?", (chat_id,))
         await tg.send_text(chat_id, "🗑 Everything deleted. Send a photo any time to start fresh.")
     else:

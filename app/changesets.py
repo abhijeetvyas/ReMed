@@ -259,9 +259,15 @@ def apply_session(conn, chat_id: str, session: dict, now_utc) -> list[dict]:
                     (med_id, rx_id, m["name"], m["form"], m["tablets_per_dose"], json.dumps(m["slots"]),
                      m["food"], m["duration_days"], db.now_iso()),
                 )
+            db.log_activity(conn, chat_id, "prescription_created",
+                            {"prescription_id": rx_id,
+                             "medicines": [m["name"] for m in rx["medicines"] if not m.get("removed")]})
             affected.append({"prescription_id": rx_id, "cancelled": False})
         else:  # live
             _persist_live_prescription(conn, chat_id, rx, user_settings)
+            db.log_activity(conn, chat_id, "prescription_updated",
+                            {"prescription_id": rx["id"],
+                             "medicines": [m["name"] for m in rx["medicines"] if not m.get("removed")]})
             affected.append({"prescription_id": rx["id"], "cancelled": False})
 
     now_iso = iso_utc(now_utc)
@@ -271,6 +277,9 @@ def apply_session(conn, chat_id: str, session: dict, now_utc) -> list[dict]:
     if session.get("user_changed") and session["type"] == "live":
         for rx in conn.execute("SELECT id FROM prescriptions WHERE chat_id=? AND status='active'", (chat_id,)).fetchall():
             scheduling.recompute_future(conn, chat_id, rx["id"], user_settings, now_utc)
+        db.log_activity(conn, chat_id, "user_settings_updated",
+                        {"timezone": s["timezone"], "meals": s["meals"],
+                         "offset_before_min": s["offset_before_min"], "offset_after_min": s["offset_after_min"]})
     return affected
 
 
@@ -305,7 +314,10 @@ def _persist_live_prescription(conn, chat_id: str, rx: dict, user_settings: dict
 
 
 def _cancel_in_db(conn, prescription_id: str) -> None:
+    chat_id = conn.execute("SELECT chat_id FROM prescriptions WHERE id=?", (prescription_id,)).fetchone()
     conn.execute("UPDATE prescriptions SET status='cancelled' WHERE id=?", (prescription_id,))
+    db.log_activity(conn, chat_id["chat_id"] if chat_id else None, "prescription_cancelled",
+                    {"prescription_id": prescription_id})
     conn.execute(
         "DELETE FROM reminder_queue WHERE dose_event_id IN (SELECT de.id FROM dose_events de"
         " JOIN medicines m ON m.id=de.medicine_id WHERE m.prescription_id=? AND de.status='pending')",

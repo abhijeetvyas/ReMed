@@ -81,9 +81,9 @@ def test_photo_to_draft_to_apply_to_reminder_to_ack(tmp_db, tg, e2e, fixed_today
     asyncio.run(engine.tick(tg, now=tick_1))
     assert len(tg.buttoned) == 3  # before-breakfast and after-breakfast are separate messages
     before_msg, after_msg = tg.buttoned[1], tg.buttoned[2]
-    assert "before breakfast" in before_msg[1]
-    assert "after breakfast" in after_msg[1]
-    assert "💊 Pantoprazole 40 — 2 tablets — before food" in before_msg[1]
+    assert "Reminder to eat medicines BEFORE Breakfast" in before_msg[1]
+    assert "Reminder to eat medicines AFTER Breakfast" in after_msg[1]
+    assert "💊 Pantoprazole 40 — 2 tablets" in before_msg[1]
     assert "💊 Azithromycin 500 — 1 tablet" in after_msg[1]
     assert any(b["text"].startswith("✅") for row in before_msg[2] for b in row)
 

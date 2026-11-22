@@ -10,6 +10,8 @@ Built against `docs/tech-design-deep-dive.md` (tables, state machines, AI contra
 ReMed/
 ├── app/                          # the bot (Python) — nothing else imports from here
 │   ├── prompts/                  #   the 2 AI prompts, one file each (edit freely)
+│   ├── rendering/                #   message templates, one module per channel
+│   │   └── telegram.py           #     (all copy today; whatsapp.py is the parked v2)
 │   ├── config.py … main.py       #   config → db → scheduling → changesets → ai →
 │   │                             #   rendering → handlers → engine → main
 ├── tests/                        # 28 pytest tests (simulated clock, fake Telegram)
@@ -39,7 +41,7 @@ ReMed/
 
 **28 tests** pass (`pytest tests/`): scheduling math, template shapes, change-set all-or-nothing validation, 15-minute-grid rules, prescription-level pause, and simulated-clock end-to-end flows (photo→apply→remind→ack→missed; /edit→apply→recompute) plus webhook dedup/secret and retry-expiry drills.
 
-**Observability tables** (not user-facing): `ai_calls` — every AI call with input, output, model, latency, ok/error (photo bytes included, kept deliberately for the golden dataset — the one privacy exception to "images deleted after transcription"); `user_messages` — every inbound command / free text / photo. Both wiped by `/delete`.
+**Observability tables** (not user-facing): `ai_calls` — every AI call with input, output, model, latency, ok/error (photo bytes included, kept deliberately for the golden dataset — the one privacy exception, now PRD rev A); `user_messages` — every inbound command / free text / photo; `activity_log` — every prescription change (created / updated / cancelled / paused / resumed) with a short detail. All wiped by `/delete`.
 
 **Prompts** live one file each under `app/prompts/` (`extract.md`, `interpret_edit.md`) and are loaded by `app/ai.py` — edit them without touching code.
 

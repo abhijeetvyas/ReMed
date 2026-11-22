@@ -34,7 +34,10 @@ def test_draft_message_shape():
     text = rendering.draft_message(session)
     assert text.startswith("Here's what I read. Please check every line 👀")
     assert "💊 AZITHROMYCIN 500 — breakfast & dinner — after food — 5 days" in text
-    assert "Breakfast 08:00 · Lunch 14:00 · Dinner 19:00" in text
+    assert "Breakfast — 8:00 AM" in text   # meal timings, one line each (rev B)
+    assert "Lunch — 2:00 PM" in text
+    assert "Dinner — 7:00 PM" in text
+    assert "Course ends" not in text
     assert text.rstrip().endswith("Does this look right?")
 
 
@@ -44,7 +47,8 @@ def test_reminder_message_single_vs_grouped():
                "name": "Azithromycin 500", "tablets_per_dose": 1,
                "offset_before_min": -15, "offset_after_min": 45, "reminder_group": "g1"}]
     text, buttons = rendering.reminder_message(single, "Asia/Kolkata")
-    assert text.splitlines()[0] == "⏰ 8:45 AM — after breakfast"
+    assert text.splitlines()[0] == "Reminder to eat medicines AFTER Breakfast"  # no clock (rev B)
+    assert "8:45" not in text
     assert "💊 Azithromycin 500 — 1 tablet" in text
     assert buttons[0][0]["text"] == "✅ Taken"
     assert buttons[0][0]["callback_data"] == "ack:taken:g1"
@@ -55,16 +59,14 @@ def test_reminder_message_single_vs_grouped():
 
     before = [single[0] | {"food": "before", "scheduled_time_utc": "2026-01-20T02:15:00+00:00"}]
     text, _ = rendering.reminder_message(before, "Asia/Kolkata")
-    assert text.splitlines()[0] == "⏰ 7:45 AM — 15 min before breakfast"
-    assert "— before food" in text
+    assert text.splitlines()[0] == "Reminder to eat medicines BEFORE Breakfast"
+    assert "— before food" not in text  # the header carries food now
 
 
-def test_scheduled_confirmation_groups_course_ends(tmp_db, fixed_today):
-    from app import changesets, scheduling
+def test_scheduled_confirmation_is_bare_ack_and_activity_logged(tmp_db, fixed_today):
+    from app import changesets, db
     from datetime import timezone
     now = datetime(2026, 1, 20, 12, 0, tzinfo=timezone.utc)
-    db_test_user = None
-    from app import db
     db.ensure_user("111")
     session = changesets.draft_session(db.get_user("111"), [
         med(name="Dolo 650", slots=["dinner"], days=2),
@@ -74,10 +76,11 @@ def test_scheduled_confirmation_groups_course_ends(tmp_db, fixed_today):
         affected = changesets.apply_session(conn, "111", session, now)
     pids = [a["prescription_id"] for a in affected]
     text = rendering.scheduled_confirmation("111", pids, now=now)
-    # dinner+45 = 19:45 IST = 14:15 UTC → today's dinner (14:15 UTC) is still ahead of now=12:00 UTC
-    assert "✅ All set — 6 doses scheduled over the next 1–3 days." in text
-    assert "Course ends: Dolo 650 Jan 21" in text
-    assert "Azithromycin 500 Jan 23" in text
+    # bare acknowledgment (founder rev B) — nothing else
+    assert text == "✅ All set — your reminders are scheduled."
+    # activity log recorded the prescription creation
+    rows = db.query("SELECT action FROM activity_log ORDER BY created_at")
+    assert [r["action"] for r in rows] == ["prescription_created"]
 
 
 def test_today_message():

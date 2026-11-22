@@ -39,8 +39,10 @@ Here's what I read. Please check every line 👀
 💊 DOLO 650 — breakfast, lunch & dinner — after food — 3 days
 💊 CHESTON COLD — dinner — after food — 3 days
 
-⏰ Scheduling in IST (UTC+5:30), around your meals:
-Breakfast 8:00 · Lunch 14:00 · Dinner 19:00 (defaults — changeable anytime)
+⏰ Reminder times (defaults — changeable anytime):
+Breakfast — 8:00 AM
+Lunch — 2:00 PM
+Dinner — 7:00 PM
 
 Does this look right?
 [ ✅ Yes, start my reminders ]   [ ✏️ Something's wrong ]
@@ -48,6 +50,7 @@ Does this look right?
 
 Design notes:
 - Line format fixed: NAME — meal slots — before/after food — [# tablets if ≠ 1] — # days.
+- Meal timings shown one line per meal (founder rev B); no course-end dates anywhere in messages.
 - Default dose of 1 tablet is never shown; only printed when the prescription says otherwise, placed just before the day count.
 - "Something's wrong" opens Flow 4 (edit loop) before anything is scheduled.
 - Start-day selection ("start tomorrow") is NOT in this MVP. The data model carries a start date per prescription so it can be added later (tech spec must keep the field).
@@ -66,37 +69,30 @@ Design notes (failure copy, per founder): ONE generic failure template style use
 
 ## Flow 3 — Confirmed → scheduled
 
+Bare acknowledgment only (founder rev B — no dose counts, no Today list, no course ends; the full schedule was just confirmed above, and /today shows what's left today):
+
 ```
-✅ All set — 10 reminders scheduled over the next 3–15 days.
-
-Today:
-• 7:45 AM (before breakfast): Pantoprazole 40
-• 8:45 AM (after breakfast): Azithromycin 500 · Dolo 650
-• 1:45 PM (before lunch): Pantoprazole 40
-• 2:45 PM (after lunch): Azithromycin 500 · Dolo 650
-• 6:45 PM (before dinner): Pantoprazole 40
-• 7:45 PM (after dinner): Azithromycin 500 · Dolo 650 · Cheston Cold
-
-Course ends: Dolo 650 & Cheston Cold Jan 23 · Azithromycin Jan 25 · Pantoprazole Feb 4
-Tip: tap ✅ on a reminder when you've taken it — that's all I'll ever ask.
+✅ All set — your reminders are scheduled.
 ```
 
 ## Flow 4 — The reminder (the core moment)
 
-Before-food slot (7:45 AM):
+No clock timestamps in reminders (founder rev B) — the meal header is the time reference (exact times still drive delivery; visible via /today).
+
+Before-food slot:
 
 ```
-⏰ 7:45 AM — 15 min before breakfast
+Reminder to eat medicines BEFORE Breakfast
 
-💊 Pantoprazole 40 — 1 tablet — before food
+💊 Pantoprazole 40 — 1 tablet
 
 [ ✅ Taken ]   [ ⏭ Skip today ]
 ```
 
-After-food slot (8:45 AM, grouped):
+After-food slot (grouped):
 
 ```
-⏰ 8:45 AM — after breakfast
+Reminder to eat medicines AFTER Breakfast
 
 💊 Azithromycin 500 — 1 tablet
 💊 Dolo 650 — 1 tablet

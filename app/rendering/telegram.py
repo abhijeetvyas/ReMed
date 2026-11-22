@@ -1,11 +1,17 @@
-"""Message rendering — templates from conversation-script-v0.2.md.
+"""Telegram channel — all user-facing message templates (conversation-script).
 
-Line format (locked decision #6):
+Locked line format (decision #6):
   NAME — meal slots — before/after food — [# tablets only if ≠ 1] — # days
+
+Founder rev B copy rules baked in below:
+  • Apply-confirmation is a bare acknowledgment — no dose counts, no Today
+    list, no course-end dates.
+  • Reminder messages carry no clock timestamps — just the meal header.
+  • The read-back message shows meal timings one line each, no course end.
 """
 import json
 
-from . import scheduling
+from .. import scheduling
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -45,6 +51,14 @@ def fmt_local_date(iso_date: str) -> str:
     return datetime.fromisoformat(iso_date).strftime("%b %-d")
 
 
+def fmt_hhmm_24_to_12(hhmm: str) -> str:
+    """'08:00' → '8:00 AM' (used for meal-time listings)."""
+    h, m = (int(x) for x in hhmm.split(":"))
+    ampm = "AM" if h < 12 else "PM"
+    h12 = h % 12 or 12
+    return f"{h12}:{m:02d} {ampm}"
+
+
 def tz_display(tz_name: str) -> str:
     now_local = datetime.now(ZoneInfo(tz_name))
     off = now_local.utcoffset() or timezone.utc.utcoffset(now_local)
@@ -69,7 +83,7 @@ def medicine_line(m: dict, prefix: str = "💊") -> str:
 
 def reminder_medicine_line(m: dict, show_food: bool = False) -> str:
     parts = [m["name"], _plural_tablets(m["tablets_per_dose"])]
-    if show_food:
+    if show_food:  # kept for backward compat; the meal header now carries food
         parts.append("before food")
     return "💊 " + " — ".join(parts)
 
@@ -80,6 +94,17 @@ def prescriptions_table(medicines: list[dict]) -> str:
 
 # ---------------------------------------------------------------- Flow 2 — draft + confirmation
 
+def _meal_times_block(user: dict, suffix: str = "") -> list[str]:
+    """Meal timings, one line each (founder rev B) — replaces the single-line
+    '⏰ Scheduling in …' block. Course end dates intentionally absent."""
+    return [
+        f"⏰ Reminder times{suffix}:",
+        f"Breakfast — {fmt_hhmm_24_to_12(user['meals']['breakfast'])}",
+        f"Lunch — {fmt_hhmm_24_to_12(user['meals']['lunch'])}",
+        f"Dinner — {fmt_hhmm_24_to_12(user['meals']['dinner'])}",
+    ]
+
+
 def draft_message(session: dict) -> str:
     user = session["user"]
     lines = ["Here's what I read. Please check every line 👀", ""]
@@ -87,14 +112,8 @@ def draft_message(session: dict) -> str:
         for m in rx["medicines"]:
             if not m.get("removed"):
                 lines.append(medicine_line(m))
-    lines += [
-        "",
-        f"⏰ Scheduling in {tz_display(user['timezone'])}, around your meals:",
-        f"Breakfast {user['meals']['breakfast']} · Lunch {user['meals']['lunch']} · "
-        f"Dinner {user['meals']['dinner']} (defaults — changeable anytime)",
-        "",
-        "Does this look right?",
-    ]
+    lines += [""] + _meal_times_block(user, " (defaults — changeable anytime)")
+    lines += ["", "Does this look right?"]
     return "\n".join(lines)
 
 
@@ -111,8 +130,7 @@ def edit_confirm_message(session: dict) -> str:
     blocks = [header, ""]
     for rx in actives:
         if len(actives) > 1:
-            end = f" → ends {fmt_local_date(rx['end_date'])}" if rx.get("end_date") else ""
-            blocks.append(f"📄 Started {fmt_local_date(rx['start_date'])}{end}")
+            blocks.append(f"📄 Started {fmt_local_date(rx['start_date'])}")  # no course end (rev B)
         for m in rx["medicines"]:
             if not m.get("removed"):
                 blocks.append(medicine_line(m))
@@ -129,72 +147,26 @@ def clarifying_message(names: list[str]) -> str:
 
 def scheduled_confirmation(chat_id: str, prescription_ids: list[str],
                            now: datetime | None = None) -> str:
-    from . import db as _db
-    user = _db.get_user(chat_id)
-    now = now or datetime.now(timezone.utc)
-    today = scheduling.today_local(user["timezone"], now)
+    """Bare acknowledgment (founder rev B) — nothing else: the schedule was
+    already shown in full above; /today covers 'what is left today'.
 
-    marks = ",".join("?" * len(prescription_ids))
-    total = _db.query_one(
-        f"SELECT COUNT(*) c FROM dose_events de JOIN medicines m ON m.id=de.medicine_id"
-        f" WHERE m.prescription_id IN ({marks}) AND de.status='pending'",
-        tuple(prescription_ids),
-    )["c"]
-
-    # per-medicine course end dates, grouped by date
-    ends: dict = {}
-    for pid in prescription_ids:
-        rx = _db.query_one("SELECT start_date FROM prescriptions WHERE id=?", (pid,))
-        start = datetime.fromisoformat(rx["start_date"]).date()
-        for m in _db.medicines_for(pid):
-            end = start + timedelta(days=m["duration_days"] - 1)
-            ends.setdefault(end, []).append(m["name"])
-
-    lines = []
-    if ends:
-        offsets = [(end - today).days for end in ends]
-        lo, hi = max(1, min(offsets)), max(offsets)
-        span = _plural_days(hi) if lo == hi else f"{lo}–{hi} days"
-        lines.append(f"✅ All set — {total} doses scheduled over the next {span}.")
-    else:
-        lines.append("✅ All set — nothing scheduled.")
-
-    events = scheduling.todays_remaining(chat_id, now)
-    if events:
-        lines += ["", "Today:"]
-        last_group = None
-        for ev in events:
-            t = fmt_local_time(ev["scheduled_time_utc"], user["timezone"])
-            if ev["reminder_group"] != last_group:
-                label = f"{'before' if ev['food'] == 'before' else 'after'} {ev['slot']}"
-                lines.append(f"• {t} ({label}): {ev['name']}")
-                last_group = ev["reminder_group"]
-            else:
-                lines[-1] += " · " + ev["name"]
-    if ends:
-        parts = ["".join([" & ".join(sorted(names)), " ", fmt_local_date(end.isoformat())])
-                 for end, names in sorted(ends.items())]
-        lines += ["", "Course ends: " + " · ".join(parts)]
-    lines += ["", "Tip: tap ✅ on a reminder when you've taken it — that's all I'll ever ask."]
-    return "\n".join(lines)
+    Args kept for interface stability (callers/tests); reduced display."""
+    return "✅ All set — your reminders are scheduled."
 
 
 # ---------------------------------------------------------------- Flow 4 — the reminder
 
 def reminder_message(events: list[dict], tz_name: str) -> tuple[str, list[list[dict]]]:
-    """events: rows of one reminder_group (same slot+food, carrying offsets)."""
+    """events: rows of one reminder_group (same slot+food, carrying offsets).
+    No clock timestamps (rev B) — the meal header is the time reference."""
     first = events[0]
-    t = fmt_local_time(first["scheduled_time_utc"], tz_name)
     food = first["food"]
-    if food == "before":
-        mins = abs(int(first["offset_before_min"]))
-        when = f"{mins} min before {first['slot']}" if mins else f"at {first['slot']}"
-    else:
-        when = f"after {first['slot']}"
-    lines = [f"⏰ {t} — {when}", ""]
+    meal = first["slot"].capitalize()
+    header = f"Reminder to eat medicines {'BEFORE' if food == 'before' else 'AFTER'} {meal}"
+    lines = [header, ""]
     for ev in events:
         m = {"name": ev["name"], "tablets_per_dose": ev["tablets_per_dose"]}
-        lines.append(reminder_medicine_line(m, show_food=(food == "before")))
+        lines.append(reminder_medicine_line(m))
     text = "\n".join(lines)
     n = len(events)
     taken_label = "✅ Taken" if n == 1 else f"✅ Taken — all {n}"
@@ -220,8 +192,7 @@ def today_message(rows, tz_name: str) -> str:
 
 
 def prescriptions_message(chat_id: str) -> str:
-    from . import db as _db
-    from .config import settings  # noqa: F401
+    from .. import db as _db
     rows = _db.prescriptions_for(chat_id, ("active", "cancelled", "expired"))
     if not rows:
         return "No prescriptions yet. Send me a photo of one to get started 📷"
@@ -245,7 +216,7 @@ def help_message() -> str:
         "/today — today's remaining doses\n"
         "/edit — edit your prescription (free text)\n"
         "/prescriptions — list my prescriptions\n"
-        "/pause — pause all reminders\n"
+        "/pause — pause all reminders (or one: /pause Azithro)\n"
         "/resume — resume reminders\n"
         "/cancel [name] — cancel one prescription\n"
         "/delete — delete all my data\n"
@@ -272,13 +243,6 @@ GENERIC_FAILURE = (
     "   \"Azithromycin 500, before breakfast and dinner, 5 days\""
 )
 
-EDIT_FAILURE = (
-    "Hmm, that didn't work. 🙁\n"
-    "\n"
-    "Please try rephrasing — plain words work best, e.g.\n"
-    "   \"Dinner is usually at 8:30 PM\""
-)
-
 EDIT_ONBOARDING = (
     "Sure — tell me what to change, in your own words. For example:\n"
     "  • \"Azithromycin is actually 5 days, and it's before food\"\n"
@@ -292,6 +256,13 @@ EDIT_ONBOARDING_DRAFT = (
     "  • \"Azithromycin is actually 5 days, and it's before food\"\n"
     "  • \"That's 2 tablets of Pantoprazole\"\n"
     "  • \"Stop Cheston Cold\""
+)
+
+EDIT_FAILURE = (
+    "Hmm, that didn't work. 🙁\n"
+    "\n"
+    "Please try rephrasing — plain words work best, e.g.\n"
+    "   \"Dinner is usually at 8:30 PM\""
 )
 
 NUDGE = "I'm not sure what to do with that. Send /help to see what I can do, or 📷 a prescription photo to get started."

@@ -113,6 +113,20 @@ CREATE TABLE IF NOT EXISTS user_messages(
 );
 CREATE INDEX IF NOT EXISTS idx_user_messages_chat ON user_messages(chat_id, created_at);
 
+-- Activity log (founder ask): what the user did to their prescriptions —
+-- created / edited / cancelled / paused / resumed / deleted — with a short
+-- JSON detail. Complements ai_calls (AI I/O) and user_messages (raw inbound).
+CREATE TABLE IF NOT EXISTS activity_log(
+  id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL,
+  action TEXT NOT NULL,              -- prescription_created | prescription_updated | prescription_cancelled
+                                     -- | prescriptions_paused | prescriptions_resumed | user_settings_updated
+                                     -- | all_data_deleted
+  detail TEXT,                       -- small JSON summary (names, counts)
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_activity_chat ON activity_log(chat_id, created_at);
+
 CREATE INDEX IF NOT EXISTS idx_queue_due ON reminder_queue(send_at, state);
 CREATE INDEX IF NOT EXISTS idx_events_user_date ON dose_events(chat_id, event_date);
 CREATE INDEX IF NOT EXISTS idx_events_medicine ON dose_events(medicine_id);
@@ -336,3 +350,20 @@ def log_user_message(chat_id: str, kind: str, text: str | None) -> None:
         "INSERT INTO user_messages(id, chat_id, kind, text, created_at) VALUES(?,?,?,?,?)",
         (uuid.uuid4().hex, chat_id, kind, text, now_iso()),
     )
+
+
+def log_activity(conn, chat_id: str, action: str, detail: dict | None = None) -> None:
+    """Activity log — must be called with the tx `conn` so it commits atomically
+    with the change it records. Use logging via db.execute wrapper when no tx
+    is open (see log_activity_now)."""
+    conn.execute(
+        "INSERT INTO activity_log(id, chat_id, action, detail, created_at) VALUES(?,?,?,?,?)",
+        (uuid.uuid4().hex, chat_id, action,
+         json.dumps(detail, ensure_ascii=False) if detail else None, now_iso()),
+    )
+
+
+def log_activity_now(chat_id: str, action: str, detail: dict | None = None) -> None:
+    """Activity log outside an open transaction."""
+    with tx() as conn:
+        log_activity(conn, chat_id, action, detail)

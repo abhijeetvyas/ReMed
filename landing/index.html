@@ -8,7 +8,7 @@
   <meta property="og:title" content="ReMed — reminders for medicines, on Telegram" />
   <meta property="og:description" content="Send a photo of your prescription. ReMed reads it, confirms the schedule with you, and reminds you of every dose until the course ends." />
   <meta property="og:url" content="https://remit.appsforlife.app/" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111112'/%3E%3Cpath d='M16 6v20M6 16h20' stroke='%23ffffff' stroke-width='4.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111112'/%3E%3Cg transform='rotate(-45 16 16)'%3E%3Crect x='9.5' y='11.5' width='13' height='9.4' rx='4.7' fill='none' stroke='%23ffffff' stroke-width='2'/%3E%3C/g%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -16,16 +16,15 @@
 </head>
 <body>
 
-  <!-- Faint spotlight that follows the cursor (pointer-fine devices only) -->
-  <div class="page-spot" aria-hidden="true"></div>
-
   <!-- ============ Header ============ -->
   <header class="site-header">
     <div class="container header-inner">
       <a class="brand" href="./">
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" width="26" height="26" fill="none"><rect width="32" height="32" rx="9"/><path d="M16 7v18M7 16h18" stroke-width="3.6" stroke-linecap="round"/></svg>
-        </span>
+        <svg class="logo-mark" viewBox="0 0 48 48" width="24" height="24" fill="none" aria-hidden="true">
+          <g transform="rotate(-45 24 24)">
+            <rect x="13.5" y="16.5" width="21" height="15" rx="7.5" stroke="currentColor" stroke-width="3.6"/>
+          </g>
+        </svg>
         <span class="brand-name">ReMed</span>
       </a>
       <nav class="header-nav" aria-label="Main">
@@ -68,7 +67,7 @@
 
         <!-- Chat mockup — exact bot copy -->
         <div class="chat-wrap reveal" aria-hidden="true">
-          <div class="phone" id="phone">
+          <div class="phone">
             <div class="phone-top"><span class="phone-dot"></span><span class="phone-dot"></span><span class="phone-dot"></span></div>
             <div class="chat-head">
               <span class="chat-avatar">R</span>
@@ -257,53 +256,6 @@
         entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
       }, { threshold: 0.15 });
       els.forEach((el, i) => { el.style.transitionDelay = `${(i % 6) * 60}ms`; io.observe(el); });
-    }
-
-    // ---- Subtle cursor tracking ------------------------------------
-    // Desktop + fine pointer + motion allowed only. Two touches, both faint:
-    //   1. a page-wide spotlight that follows the cursor;
-    //   2. a highlight inside each card/step that tracks the pointer,
-    //      plus a gentle tilt on the phone mockup.
-    const fine = matchMedia('(pointer: fine)').matches &&
-                 !matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    if (fine) {
-      const spot = document.querySelector('.page-spot');
-      const root = document.documentElement;
-      let spotRaf = 0, lastX = 0, lastY = 0;
-
-      const paintSpot = () => {
-        spotRaf = 0;
-        root.style.setProperty('--px', lastX + 'px');
-        root.style.setProperty('--py', lastY + 'px');
-      };
-      addEventListener('pointermove', e => {
-        lastX = e.clientX; lastY = e.clientY;
-        spot.classList.add('on');
-        if (!spotRaf) spotRaf = requestAnimationFrame(paintSpot);
-      }, { passive: true });
-
-      // per-card pointer highlight
-      const cards = document.querySelectorAll('.card, .step');
-      const track = e => {
-        const r = e.currentTarget.getBoundingClientRect();
-        e.currentTarget.style.setProperty('--mx', (e.clientX - r.left) + 'px');
-        e.currentTarget.style.setProperty('--my', (e.clientY - r.top) + 'px');
-      };
-      cards.forEach(c => c.addEventListener('pointermove', track, { passive: true }));
-
-      // gentle tilt on the phone mockup (max ~2.5°)
-      const phone = document.getElementById('phone');
-      const wrap = phone && phone.closest('.chat-wrap');
-      if (phone && wrap) {
-        wrap.addEventListener('pointermove', e => {
-          const r = wrap.getBoundingClientRect();
-          const dx = (e.clientX - r.left) / r.width - 0.5;
-          const dy = (e.clientY - r.top) / r.height - 0.5;
-          phone.style.transform = `rotateY(${(dx * 4).toFixed(2)}deg) rotateX(${(-dy * 4).toFixed(2)}deg)`;
-        }, { passive: true });
-        wrap.addEventListener('pointerleave', () => { phone.style.transform = ''; });
-      }
     }
   </script>
 </body>

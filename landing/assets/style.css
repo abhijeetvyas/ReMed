@@ -143,39 +143,27 @@ code {
   border-bottom: 1px solid var(--border);
 }
 .header-inner {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;   /* spacer · centered brand · nav */
   align-items: center;
-  justify-content: space-between;
   height: 66px;
 }
-.brand { display: inline-flex; align-items: center; gap: 10px; }
-.brand-mark svg rect { fill: var(--ink); stroke: none; }
-.brand-mark svg path { stroke: #fff; }
+.brand {
+  grid-column: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+}
+.logo-mark { color: var(--ink); flex: none; }
 .brand-name {
   font-family: var(--serif);
   font-weight: 600;
   letter-spacing: -0.01em;
   font-size: 1.15rem;
 }
-.header-nav { display: flex; align-items: center; gap: 26px; }
+.header-nav { grid-column: 3; justify-self: end; display: flex; align-items: center; gap: 26px; }
 .header-nav > a:not(.btn) { font-size: 0.9rem; color: var(--muted); transition: color 0.15s; }
 .header-nav > a:not(.btn):hover { color: var(--ink); }
-
-/* ---------- page spotlight (cursor-tracking, very faint) ---------- */
-@keyframes spot-on { to { opacity: 1; } }
-.page-spot {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  opacity: 0;
-  background: radial-gradient(520px circle at var(--px, 50%) var(--py, 0%), rgba(17, 17, 18, 0.045), transparent 65%);
-  transition: opacity 0.6s ease;
-}
-.page-spot.on { opacity: 1; animation: spot-on 0.8s ease forwards; }
-@media (prefers-reduced-motion: reduce) { .page-spot { display: none; } }
-
-main { position: relative; z-index: 1; }
 
 /* ---------- hero ---------- */
 .hero { padding: 96px 0 48px; }
@@ -231,7 +219,7 @@ main { position: relative; z-index: 1; }
 .pill-arrow { color: var(--ink); }
 
 /* ---------- chat mockup (an "image" — allowed to carry Telegram's colors) ---------- */
-.chat-wrap { display: flex; justify-content: center; perspective: 1100px; }
+.chat-wrap { display: flex; justify-content: center; }
 .phone {
   width: min(380px, 100%);
   background: #fff;
@@ -239,9 +227,6 @@ main { position: relative; z-index: 1; }
   border-radius: 26px;
   padding: 14px 14px 20px;
   box-shadow: var(--shadow-lg);
-  transform-style: preserve-3d;
-  transition: transform 0.25s ease;
-  will-change: transform;
 }
 .phone-top { display: flex; gap: 5px; padding: 2px 6px 10px; }
 .phone-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--border-2); }
@@ -328,19 +313,6 @@ main { position: relative; z-index: 1; }
 /* ---------- sections ---------- */
 .section { padding: 100px 0 24px; position: relative; }
 .section > .container > .h2 { margin-bottom: 50px; }
-
-/* cursor-tracked cards: a faint highlight follows the pointer inside each card */
-.card, .step { --mx: 50%; --my: 50%; position: relative; overflow: hidden; }
-.card::after, .step::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  background: radial-gradient(240px circle at var(--mx) var(--my), rgba(17, 17, 18, 0.045), transparent 65%);
-}
-.card:hover::after, .step:hover::after { opacity: 1; }
 
 /* steps */
 .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }

@@ -4,21 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Terms of Service — ReMed</title>
-  <meta name="description" content="Terms of Service for ReMed, the Telegram medicine-reminder bot by AppsForLife." />
+  <meta name="description" content="Terms of Service for ReMed, a free Telegram medicine-reminder bot. Plain English, short, and honest." />
   <meta name="robots" content="noindex, follow" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0d12'/%3E%3Cpath d='M16 6v20M6 16h20' stroke='%2334d399' stroke-width='4.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111112'/%3E%3Cpath d='M16 6v20M6 16h20' stroke='%23ffffff' stroke-width='4.5' stroke-linecap='round'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/style.css" />
 </head>
 <body>
+
+  <!-- Faint spotlight that follows the cursor (pointer-fine devices only) -->
+  <div class="page-spot" aria-hidden="true"></div>
 
   <header class="site-header">
     <div class="container header-inner">
       <a class="brand" href="./">
         <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" width="26" height="26" fill="none"><rect width="32" height="32" rx="9" fill="rgba(52,211,153,.12)" stroke="rgba(52,211,153,.45)"/><path d="M16 7v18M7 16h18" stroke="#34d399" stroke-width="3.6" stroke-linecap="round"/></svg>
+          <svg viewBox="0 0 32 32" width="26" height="26" fill="none"><rect width="32" height="32" rx="9"/><path d="M16 7v18M7 16h18" stroke-width="3.6" stroke-linecap="round"/></svg>
         </span>
         <span class="brand-name">ReMed</span>
       </a>
@@ -36,52 +39,32 @@
 
   <main class="section doc">
     <h1>Terms of Service</h1>
-    <p class="updated">Last updated: 22 November 2026</p>
+    <p class="updated">LAST UPDATED · 22 NOVEMBER 2026</p>
 
     <div class="notice">
-      <p><strong>In short:</strong> ReMed is a free reminder tool, not a medical device and not medical advice. It does its best to read what you send and remind you at the right times — but the schedule it shows you is only worth acting on after you confirm it, and it never replaces your doctor or pharmacist.</p>
+      <p><strong>The one-paragraph version:</strong> ReMed is a free personal project that turns a photo of your prescription into Telegram reminders. It can misread things, it can go down, and it is <strong>not a doctor</strong>. Always double-check the schedule against your actual prescription, and don't rely on ReMed alone. Use it as-is — if something goes wrong, the most we owe you is the nothing you paid for it.</p>
     </div>
 
-    <h2>1. Acceptance</h2>
-    <p>By messaging or otherwise using the ReMed bot ("the Service"), operated by AppsForLife ("we", "us"), through Telegram, you agree to these Terms of Service. If you do not agree, please stop using the Service and send <code>/delete</code> to remove your data.</p>
+    <h2><span class="n">1</span>What this is</h2>
+    <p>ReMed ("the Service") is a non-commercial side project run by AppsForLife ("we", "us", "me" — it's small). You send a photo or a typed description of a prescription to the ReMed bot on Telegram; automated processing (including AI models) drafts a medication schedule; and only after you explicitly confirm it does the Service send you reminders for each dose. The Service is free, doesn't create accounts, and exists to solve one small problem well.</p>
 
-    <h2>2. What the Service is — and is not</h2>
-    <p>ReMed lets you send a photo or text of a doctor's prescription, uses automated processing (including AI models) to draft a structured medication schedule, and — only after you explicitly confirm it — sends you reminders for each dose.</p>
-    <p>The Service is <strong>not a medical device</strong> and does not provide medical advice, diagnosis, or treatment. Specifically:</p>
-    <ul>
-      <li>We do not verify the correctness of any prescription, dosage, or schedule against your actual doctor's instructions.</li>
-      <li>Automated reading and scheduling can be wrong — incomplete photos, unusual handwriting, abbreviations, and non-standard formats all contribute to errors.</li>
-      <li><strong>Always verify the schedule ReMed shows you against your prescription before confirming it, and consult your doctor or pharmacist about any medical question.</strong></li>
-    </ul>
+    <h2><span class="n">2</span>This is not medical advice</h2>
+    <p>The Service is <strong>not a medical device</strong> and provides <strong>no medical advice, diagnosis, or treatment</strong>. It does not check what you send against any medical authority. The AI reading and scheduling can be and sometimes will be wrong — handwriting, abbreviations, lighting, and unusual formats all cause errors. You are responsible for verifying every line of the schedule against your actual prescription before confirming, and for consulting your doctor or pharmacist about anything medical. <strong>Never rely on ReMed alone for medication decisions.</strong></p>
 
-    <h2>3. Eligibility and Telegram</h2>
-    <p>The Service runs through your Telegram account. You must be old enough to use the Service lawfully in your jurisdiction, and you are responsible for your Telegram account and for anyone with access to your device. Your use of Telegram is additionally governed by Telegram's own terms and privacy policy.</p>
+    <h2><span class="n">3</span>Using the Service</h2>
+    <p>The Service runs through your Telegram account, and your use of Telegram is governed by Telegram's own terms. We ask three simple things: don't send other people's prescriptions or personal data you aren't authorized to share; don't try to overload, break, or circumvent the Service's limits; and accept that we may rate-limit or block anyone who does otherwise. Because reminders depend on Telegram, your internet, and our little server, they may occasionally be late, missed, or duplicated.</p>
 
-    <h2>4. Your data and privacy</h2>
-    <p>We store only what is needed to operate the Service: your prescriptions, meal times, dose history, and basic operational logs. We do not sell your data, show advertisements, or track you across other services.</p>
-    <p>You can erase everything at any time with the <code>/delete</code> command, which removes your prescriptions, history, and associated records. Some minimal technical logs may be retained briefly for security and abuse prevention.</p>
+    <h2><span class="n">4</span>Your data</h2>
+    <p>We store only what the Service needs to remind you: prescriptions, meal times, dose history, and minimal technical logs. We don't sell data, show ads, or track you anywhere else. You can wipe everything at any time with the <code>/delete</code> command — prescriptions, history, associated records, gone. Some minimal logs may linger briefly for security and abuse prevention, and that's it. This section is a plain-language summary, not a separate privacy policy; if you have questions, just ask via the bot.</p>
 
-    <h2>5. Acceptable use</h2>
-    <ul>
-      <li>Do not use the Service to send content you are not authorised to send, including other people's prescriptions or personal data.</li>
-      <li>Do not attempt to disrupt, overload, reverse-engineer for harm, or circumvent the limits and safeguards of the Service.</li>
-      <li>We may rate-limit, restrict, or terminate access to anyone who abuses the Service or endangers its operation for others.</li>
-    </ul>
+    <h2><span class="n">5</span>No warranty</h2>
+    <p>The Service is provided <strong>"as is" and "as available"</strong>, free of charge, with no warranties of any kind, express or implied — including any warranty of accuracy, reliability, merchantability, or fitness for a particular purpose. It may change, degrade, or disappear at any time; it's a hobby project, and we may modify or discontinue it — or these terms — whenever we see fit, updating the date above. Continuing to use the Service after a change means you accept the updated terms.</p>
 
-    <h2>6. Availability and changes</h2>
-    <p>The Service is provided during an early-access period, free of charge. We may add, change, or discontinue features — or the whole Service — at any time. We aim for reliability but do not guarantee uninterrupted or error-free operation; reminders may be late or missed due to outages, network problems, Telegram availability, or other factors beyond our control.</p>
+    <h2><span class="n">6</span>Limitation of liability</h2>
+    <p>To the <strong>maximum extent permitted by applicable law</strong>, AppsForLife and its operators accept <strong>no liability whatsoever</strong> for any damages, losses, medical outcomes, or expenses arising from your use of — or inability to use — the Service, including missed reminders, incorrect schedules, or anything related to your health. If, despite this section, any liability is found where you live, it is limited to the maximum extent that law allows, and in any event to zero dollars, since the Service costs zero dollars. Your one remedy if you're unhappy: stop using it and send <code>/delete</code>.</p>
 
-    <h2>7. No warranty</h2>
-    <p>The Service is provided "as is" and "as available", without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose, and non-infringement. We do not warrant that the Service will be accurate, complete, reliable, or available at all times.</p>
-
-    <h2>8. Limitation of liability</h2>
-    <p>To the maximum extent permitted by law, AppsForLife and its operators will not be liable for any indirect, incidental, special, consequential, or punitive damages — including damages arising from missed doses, incorrect schedules, or medical outcomes — even if advised of the possibility of such damages. Your sole remedy for dissatisfaction with the Service is to stop using it and send <code>/delete</code>.</p>
-
-    <h2>9. Changes to these Terms</h2>
-    <p>We may update these Terms from time to time. Material changes will be reflected in the "Last updated" date above and, where practical, announced within the bot. Continuing to use the Service after changes take effect means you accept the updated Terms.</p>
-
-    <h2>10. Contact</h2>
-    <p>Questions, feedback, or concerns? Reach us via the ReMed bot itself, or through the details published on our website.</p>
+    <h2><span class="n">7</span>Contact</h2>
+    <p>Questions, corrections, or feedback? The fastest way is to message the ReMed bot itself, or reach out through the details published on our website.</p>
   </main>
 
   <footer class="site-footer">
@@ -96,14 +79,30 @@
         <a href="https://appsforlife.app" rel="noopener">appsforlife.app</a>
       </nav>
       <p class="footer-note">
-        © <span id="year">2026</span> AppsForLife. ReMed is not a medical device and does not
-        provide medical advice. Always follow your doctor's instructions.
+        © <span id="year">2026</span> AppsForLife. ReMed is a personal, non-commercial project.
+        It is not a medical device and does not provide medical advice. Always follow your
+        doctor's instructions.
       </p>
     </div>
   </footer>
 
   <script>
     document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Same subtle spotlight as the landing page
+    if (matchMedia('(pointer: fine)').matches && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const spot = document.querySelector('.page-spot');
+      const root = document.documentElement;
+      let raf = 0, x = 0, y = 0;
+      addEventListener('pointermove', e => {
+        x = e.clientX; y = e.clientY;
+        spot.classList.add('on');
+        if (!raf) raf = requestAnimationFrame(() => { raf = 0;
+          root.style.setProperty('--px', x + 'px');
+          root.style.setProperty('--py', y + 'px');
+        });
+      }, { passive: true });
+    }
   </script>
 </body>
 </html>

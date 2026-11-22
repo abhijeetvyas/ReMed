@@ -55,7 +55,10 @@ class AIClient:
     transparently retries model N+1. The caller is told which model answered,
     so ai_calls rows record reality, not config."""
 
-    FALLBACK_ON = (429, 500, 502, 503, 504)  # rate-limited or provider-side trouble
+    # 429/5xx = rate-limited or provider-side trouble; 404 = model name unknown
+    # (typo, renamed, or not yet live) — all fall through to the next model.
+    # Other 4xx (bad key, malformed request) fail hard: fixing them needs a human.
+    FALLBACK_ON = (404, 429, 500, 502, 503, 504)
 
     def __init__(self, base_url: str | None = None, api_key: str | None = None,
                  models: list[str] | None = None):

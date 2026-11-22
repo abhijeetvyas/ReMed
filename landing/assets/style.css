@@ -151,7 +151,7 @@ code {
 .brand {
   display: inline-flex;
   align-items: center;          /* mark and wordmark mutually center-aligned */
-  gap: 13px;
+  gap: 8px;
 }
 .logo-mark {
   color: var(--ink);

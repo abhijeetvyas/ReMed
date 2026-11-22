@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- ReMed raster master · favicon PNG + apple-touch-icon are derived from this -->
+  <rect width="512" height="512" rx="128" fill="#111112"/>
+  <g transform="rotate(-45 256 256)">
+    <path d="M256 184H227A75 75 0 0 0 227 334H256Z" fill="#ffffff"/>
+    <rect x="152" y="184" width="208" height="150" rx="75" fill="none" stroke="#ffffff" stroke-width="32"/>
+  </g>
+</svg>

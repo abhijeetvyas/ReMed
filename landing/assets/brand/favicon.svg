@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- ReMed favicon · SVG, for modern browsers -->
+  <rect width="32" height="32" rx="8" fill="#111112"/>
+  <g transform="rotate(-45 16 16)">
+    <path d="M16 11.5H14.2A4.7 4.7 0 0 0 14.2 20.9H16Z" fill="#ffffff"/>
+    <rect x="9.5" y="11.5" width="13" height="9.4" rx="4.7" fill="none" stroke="#ffffff" stroke-width="2"/>
+  </g>
+</svg>

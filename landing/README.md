@@ -7,8 +7,30 @@ landing/
 ├── index.html      # the landing page
 ├── terms.html      # Terms of Service
 ├── assets/
-│   └── style.css   # shared styles (dark, mobile-first)
+│   ├── style.css   # shared styles (light, editorial)
+│   └── brand/      # logo & favicon assets (see below)
+├── logo-options.html  # working file — logo concepts review, NOT deployed
 └── Dockerfile      # nginx:alpine static server, for Coolify
+```
+
+## Logo / favicon assets (`assets/brand/`)
+
+| File | Purpose |
+|---|---|
+| `logo.svg` | vector master of the capsule mark (light background) |
+| `favicon.svg` | favicon for modern browsers |
+| `favicon-32.png` / `favicon-16.png` | PNG fallbacks (Safari tab) |
+| `apple-touch-icon.png` | 180px, iOS home-screen icon |
+| `icon-master.svg` | 512px source used to regenerate the PNGs |
+
+Regenerate the PNGs after editing `icon-master.svg` (macOS):
+
+```bash
+cd assets/brand
+qlmanage -t -s 512 -o /tmp icon-master.svg
+sips -z 180 180 /tmp/icon-master.svg.png --out apple-touch-icon.png
+sips -z 32 32  /tmp/icon-master.svg.png --out favicon-32.png
+sips -z 16 16  /tmp/icon-master.svg.png --out favicon-16.png
 ```
 
 ## Deploy to Coolify

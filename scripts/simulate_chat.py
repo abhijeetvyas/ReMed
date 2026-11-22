@@ -1,4 +1,4 @@
-"""Generate chat-simulation.html — a transcript of a real user's chat with the
+"""Generate artifacts/chat-simulation.html — a transcript of a real user's chat with the
 bot, using the REAL handlers/rendering/engine code paths (only the AI is
 scripted, and photos are replaced by a placeholder). Every bot message in the
 artifact is byte-for-byte what the code produces.
@@ -350,7 +350,7 @@ scripted and photos appear as a placeholder. Clock: 2026-01-20, 06:30 IST ·
 breakfast 08:00 · lunch 14:00 · dinner 19:00 · before −15 min · after +45 min · Asia/Kolkata.</p>
 {"".join(body)}
 </body></html>"""
-    out = ROOT / "chat-simulation.html"
+    out = ROOT / "artifacts" / "chat-simulation.html"
     out.write_text(html_doc, encoding="utf-8")
     print(f"wrote {out}")
 

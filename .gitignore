@@ -12,3 +12,6 @@ __pycache__/
 
 # local artifacts
 scripts/_sim.db*
+
+# OS junk
+.DS_Store

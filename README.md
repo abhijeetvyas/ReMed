@@ -2,7 +2,31 @@
 
 Send a photo of a doctor's prescription → the bot reads it into a structured, confirmable schedule → sends one well-timed reminder per dose until the course ends. No app install, no accounts: the Telegram chat is the product and the chat ID is the identity.
 
-Built against `tech-design-deep-dive.md` (tables, state machines, AI contracts), with `conversation-script-v0.2.md` as the message surface and `prd-v0.4.md` as the scope fence.
+Built against `docs/tech-design-deep-dive.md` (tables, state machines, AI contracts), with `docs/conversation-script-v0.2.md` as the message surface and `docs/prd-v0.4.md` as the scope fence.
+
+## Where things live
+
+```
+ReMed/
+├── app/                          # the bot (Python) — nothing else imports from here
+│   ├── prompts/                  #   the 2 AI prompts, one file each (edit freely)
+│   ├── config.py … main.py       #   config → db → scheduling → changesets → ai →
+│   │                             #   rendering → handlers → engine → main
+├── tests/                        # 28 pytest tests (simulated clock, fake Telegram)
+├── scripts/
+│   └── simulate_chat.py          # regenerates artifacts/chat-simulation.html
+├── docs/                         # the specs (read in this order for a fresh start)
+│   ├── remed-flowchart.md        #   1 · visual orientation map
+│   ├── prd-v0.4.md               #   2 · scope fence (what's deliberately out)
+│   ├── conversation-script-v0.2.md  # 3 · exact user-facing messages
+│   ├── tech-design-v0.1.md       #   4 · architecture one-pager
+│   ├── tech-design-deep-dive.md  #   5 · full reference (authoritative)
+│   └── history/                  # decision trail only — do not build from
+│       └── med-reminder-brainstorming.md
+└── artifacts/                    # viewable outputs
+    ├── chat-simulation.html      # simulated user journey, exact bot output
+    └── remed-flowchart.html      # as-built system flowchart
+```
 
 ## Status — first working slice (MVP core, tested)
 
@@ -19,7 +43,7 @@ Built against `tech-design-deep-dive.md` (tables, state machines, AI contracts),
 
 **Prompts** live one file each under `app/prompts/` (`extract.md`, `interpret_edit.md`) and are loaded by `app/ai.py` — edit them without touching code.
 
-`chat-simulation.html` is a generated artifact (script: `scripts/simulate_chat.py`) showing exact bot outputs for a full simulated user journey.
+`artifacts/chat-simulation.html` is a generated artifact (script: `scripts/simulate_chat.py`) showing exact bot outputs for a full simulated user journey.
 
 ## Run it
 

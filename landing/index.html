@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ReMed — Send a photo. Never miss a dose.</title>
+  <meta name="description" content="ReMed reads your doctor's prescription, schedules every dose, and reminds you at the right time — right inside Telegram. No app to install, no account to create." />
+  <meta property="og:title" content="ReMed — reminders for medicines, on Telegram" />
+  <meta property="og:description" content="Send a photo of your prescription. ReMed reads it, confirms the schedule with you, and reminds you of every dose until the course ends." />
+  <meta property="og:url" content="https://remit.appsforlife.app/" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b0d12'/%3E%3Cpath d='M16 6v20M6 16h20' stroke='%2334d399' stroke-width='4.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+
+  <!-- ============ Header ============ -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="./">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="26" height="26" fill="none"><rect width="32" height="32" rx="9" fill="rgba(52,211,153,.12)" stroke="rgba(52,211,153,.45)"/><path d="M16 7v18M7 16h18" stroke="#34d399" stroke-width="3.6" stroke-linecap="round"/></svg>
+        </span>
+        <span class="brand-name">ReMed</span>
+      </a>
+      <nav class="header-nav" aria-label="Main">
+        <a href="#how">How it works</a>
+        <a href="#privacy">Privacy</a>
+        <a href="terms.html">Terms</a>
+        <a class="btn btn-sm btn-telegram" href="https://t.me/Reminderformedicinebot?start=web" target="_blank" rel="noopener">
+          <svg class="tg-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M21.9 3.4 18.9 19.1c-.2 1-.8 1.3-1.7.8l-4.6-3.4-2.2 2.1c-.2.2-.4.4-.9.4l.3-4.6 8.4-7.6c.4-.3-.1-.5-.6-.2L7.3 12.6 2.9 11.2c-1-.3-1-1 .2-1.5l17.4-6.7c.8-.3 1.5.2 1.4 1.4z"/></svg>
+          Open in Telegram
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============ Hero ============ -->
+    <section class="hero">
+      <div class="glow glow-1" aria-hidden="true"></div>
+      <div class="glow glow-2" aria-hidden="true"></div>
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <a class="pill reveal" href="https://t.me/Reminderformedicinebot?start=web" target="_blank" rel="noopener">
+            <span class="pill-dot" aria-hidden="true"></span>
+            Early access · live on Telegram
+            <span class="pill-arrow" aria-hidden="true">→</span>
+          </a>
+          <h1 class="reveal">Send a photo.<br /><span class="grad">Never miss a dose.</span></h1>
+          <p class="hero-sub reveal">
+            ReMed reads your doctor's prescription, schedules every dose, and
+            reminds you at the right time — right inside the Telegram chat
+            you already use. <strong>No app to install. No account to create.</strong>
+          </p>
+          <div class="cta-row reveal">
+            <a class="btn btn-lg btn-telegram" href="https://t.me/Reminderformedicinebot?start=web" target="_blank" rel="noopener">
+              <svg class="tg-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M21.9 3.4 18.9 19.1c-.2 1-.8 1.3-1.7.8l-4.6-3.4-2.2 2.1c-.2.2-.4.4-.9.4l.3-4.6 8.4-7.6c.4-.3-.1-.5-.6-.2L7.3 12.6 2.9 11.2c-1-.3-1-1 .2-1.5l17.4-6.7c.8-.3 1.5.2 1.4 1.4z"/></svg>
+              Start on Telegram
+            </a>
+            <a class="btn btn-lg btn-ghost" href="#how">See how it works</a>
+          </div>
+          <p class="micro-trust reveal">Free during early access · chat-based · leave anytime with <code>/delete</code></p>
+        </div>
+
+        <!-- Chat mockup — exact bot copy -->
+        <div class="chat-wrap reveal" aria-hidden="true">
+          <div class="phone">
+            <div class="phone-top"><span class="phone-dot"></span><span class="phone-dot"></span><span class="phone-dot"></span></div>
+            <div class="chat-head">
+              <span class="chat-avatar">R</span>
+              <span>
+                <strong>ReMed</strong>
+                <small>bot</small>
+              </span>
+            </div>
+            <div class="chat-body">
+              <div class="msg bot"><p>Hey 👋 I'm ReMed — reminders for medicines.</p></div>
+              <div class="msg user img"><span class="thumb">📷</span>prescription.jpg</div>
+              <div class="msg bot"><p>Here's what I read. Please check every line 👀</p>
+                <div class="rx-card">
+                  <span class="rx-line">💊 AZITHROMYCIN 500 — breakfast &amp; dinner, after food · 1 tablet · 5 days</span>
+                  <span class="rx-line">💊 DOLO 650 — lunch, dinner, after food · 1 tablet · 3 days</span>
+                </div>
+                <p>Does this look right?</p>
+                <div class="kb"><span class="kb-btn ok">✅ Yes</span><span class="kb-btn">✏️ Fix</span></div>
+              </div>
+              <div class="msg bot"><p>✅ All set — your reminders are scheduled.</p></div>
+              <div class="msg bot"><p>Reminder to eat medicines AFTER lunch</p>
+                <div class="rx-card">
+                  <span class="rx-line">💊 DOLO 650 — 1 tablet</span>
+                </div>
+                <div class="kb"><span class="kb-btn ok">✅ Taken</span><span class="kb-btn">⏭ Skip today</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Strip ============ -->
+    <section class="strip">
+      <div class="container strip-inner">
+        <span>No app install</span><span class="strip-sep" aria-hidden="true">✦</span>
+        <span>No account</span><span class="strip-sep" aria-hidden="true">✦</span>
+        <span>No spam</span><span class="strip-sep" aria-hidden="true">✦</span>
+        <span>The chat <em>is</em> the product</span>
+      </div>
+    </section>
+
+    <!-- ============ How it works ============ -->
+    <section class="section" id="how">
+      <div class="container">
+        <p class="eyebrow reveal">How it works</p>
+        <h2 class="h2 reveal">From prescription to reminder<br class="br-md" /> in under a minute.</h2>
+        <div class="steps">
+          <article class="step reveal">
+            <span class="step-num">01</span>
+            <h3>Snap the prescription</h3>
+            <p>Send a photo of the doctor's note — or type the medicines in your own words. ReMed's AI reads names, dosage, food timing and duration.</p>
+          </article>
+          <article class="step reveal">
+            <span class="step-num">02</span>
+            <h3>Check the schedule</h3>
+            <p>Nothing runs until you've seen exactly what was read. Confirm every line — or fix any of it in plain words, like "Dolo is actually 5 days".</p>
+          </article>
+          <article class="step reveal">
+            <span class="step-num">03</span>
+            <h3>Get reminded. Tap ✅.</h3>
+            <p>One well-timed nudge per dose, built around your own meal times — until the course ends. Mark Taken or Skip with a tap, and it knows.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Features ============ -->
+    <section class="section">
+      <div class="container">
+        <p class="eyebrow reveal">Why ReMed</p>
+        <h2 class="h2 reveal">Built like a good assistant,<br class="br-md" /> not another app to manage.</h2>
+        <div class="features">
+          <article class="card reveal">
+            <span class="card-ico">📷</span>
+            <h3>Photo in, schedule out</h3>
+            <p>A single photo becomes a structured, confirmable plan — medicines, doses, food timing, duration.</p>
+          </article>
+          <article class="card reveal">
+            <span class="card-ico">👀</span>
+            <h3>You confirm first</h3>
+            <p>A hard confirmation gate before anything is scheduled. What you saw is what you get.</p>
+          </article>
+          <article class="card reveal">
+            <span class="card-ico">⏰</span>
+            <h3>Well-timed, not noisy</h3>
+            <p>One reminder per dose, tied to your breakfast, lunch and dinner. No pings for doses you already handled.</p>
+          </article>
+          <article class="card reveal">
+            <span class="card-ico">✅</span>
+            <h3>One tap done</h3>
+            <p>✅ Taken and ⏭ Skip right on the reminder. <code>/today</code> shows what's left in your day.</p>
+          </article>
+          <article class="card reveal">
+            <span class="card-ico">✏️</span>
+            <h3>Change your mind anytime</h3>
+            <p>"Skip Dolo today", "remind me 20 min before meals", "stop Azithro" — plain words, ReMed does the rest.</p>
+          </article>
+          <article class="card reveal">
+            <span class="card-ico">🗑</span>
+            <h3>Your data, your call</h3>
+            <p><code>/delete</code> wipes everything — prescriptions, history, all of it — in one command. No emails, no support tickets.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Privacy ============ -->
+    <section class="section" id="privacy">
+      <div class="container">
+        <div class="privacy-box reveal">
+          <p class="eyebrow">Privacy, plainly</p>
+          <h2 class="h2">Your chat is the only account.</h2>
+          <p class="privacy-sub">
+            ReMed stores what it needs to remind you: your prescription, your meal
+            times, your dose history. No ads, no tracking pixels, no "engagement"
+            emails — there is nothing to email you about. And when you're done,
+            <code>/delete</code> removes all of it, immediately.
+          </p>
+          <div class="privacy-points">
+            <div class="p-point"><span>No sign-up</span>your Telegram chat ID is the only account</div>
+            <div class="p-point"><span>No ads</span>no tracking, no data resale, ever</div>
+            <div class="p-point"><span>No lock-in</span>one typed <code>/delete</code> and it's all gone</div>
+          </div>
+          <a class="btn btn-ghost" href="terms.html">Read the Terms of Service</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ WhatsApp teaser + final CTA ============ -->
+    <section class="section final">
+      <div class="container final-inner">
+        <h2 class="h2 reveal">Your next dose is<br class="br-sm" /> <span class="grad">one photo away.</span></h2>
+        <div class="cta-row reveal center">
+          <a class="btn btn-lg btn-telegram" href="https://t.me/Reminderformedicinebot?start=web" target="_blank" rel="noopener">
+            <svg class="tg-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M21.9 3.4 18.9 19.1c-.2 1-.8 1.3-1.7.8l-4.6-3.4-2.2 2.1c-.2.2-.4.4-.9.4l.3-4.6 8.4-7.6c.4-.3-.1-.5-.6-.2L7.3 12.6 2.9 11.2c-1-.3-1-1 .2-1.5l17.4-6.7c.8-.3 1.5.2 1.4 1.4z"/></svg>
+            Open ReMed in Telegram
+          </a>
+          <!-- WhatsApp goes live later: swap the class below for btn-wa and
+               set href="https://wa.me/<number>?text=hi" — the button is already styled. -->
+          <span class="btn btn-lg btn-wa soon" aria-disabled="true" title="Coming soon">
+            <svg class="tg-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.6-6.1c-.3-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1-.2.3-.6.8-.8 1-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.4-3c-.3-.4 0-.5.1-.7l.4-.5c.1-.1.2-.3.3-.4.1-.2 0-.3 0-.5L9.6 7.6c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.5.1-.7.3-.9 1-1.2 2.1-.7 3.5.5 1.3 1.5 2.7 2.8 3.9a8 8 0 0 0 4.4 2.3c1 .1 1.9-.2 2.6-.9.3-.4.5-.9.5-1.4 0-.2-.1-.4-.3-.4z"/></svg>
+            WhatsApp · coming soon
+          </span>
+        </div>
+        <p class="micro-trust reveal">Free during early access · works anywhere Telegram works</p>
+      </div>
+      <div class="glow glow-3" aria-hidden="true"></div>
+    </section>
+  </main>
+
+  <!-- ============ Footer ============ -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <span class="brand-name">ReMed</span>
+        <span class="footer-tag">reminders for medicines 💊</span>
+      </div>
+      <nav class="footer-nav" aria-label="Footer">
+        <a href="https://t.me/Reminderformedicinebot?start=web" target="_blank" rel="noopener">Telegram</a>
+        <a href="terms.html">Terms of Service</a>
+        <a href="https://appsforlife.app" rel="noopener">appsforlife.app</a>
+      </nav>
+      <p class="footer-note">
+        © <span id="year">2026</span> AppsForLife. ReMed is not a medical device and does not
+        provide medical advice. Always follow your doctor's instructions.
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // ---- Channel links: one place to update later ------------------
+    // Telegram: universal link — opens the bot directly in the app if
+    // installed; otherwise t.me's "open in Telegram?" page.
+    // The ?start=web payload tells the bot where the user came from.
+    // WhatsApp (future): change .btn-wa from a <span> to an <a> and set
+    // href="https://wa.me/<number>?text=hi" — styling is already in place.
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // Reveal on scroll (respects reduced motion)
+    const els = document.querySelectorAll('.reveal');
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      els.forEach(el => el.classList.add('in'));
+    } else {
+      const io = new IntersectionObserver(entries => {
+        entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+      }, { threshold: 0.15 });
+      els.forEach((el, i) => { el.style.transitionDelay = `${(i % 6) * 60}ms`; io.observe(el); });
+    }
+  </script>
+</body>
+</html>

@@ -1,8 +1,8 @@
-# Static site for remit.appsforlife.app — served by nginx (no build step).
+# Static site for remed.appsforlife.app — served by nginx (no build step).
 # Deploy in Coolify:
 #   New Resource → Dockerfile → pick this repo,
 #   Docker Build Context Directory: /landing
-#   Port: 80  → then point remit.appsforlife.app (A/CNAME in Cloudflare) at it.
+#   Port: 80  → then point remed.appsforlife.app (A/CNAME in Cloudflare) at it.
 FROM nginx:1.27-alpine
 
 COPY index.html terms.html /usr/share/nginx/html/

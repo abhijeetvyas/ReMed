@@ -25,7 +25,7 @@ ReMed/
 │   ├── tech-design-deep-dive.md  #   5 · full reference (authoritative)
 │   └── history/                  # decision trail only — do not build from
 │       └── med-reminder-brainstorming.md
-├── landing/                      # static marketing site, remit.appsforlife.app
+├── landing/                      # static marketing site, remed.appsforlife.app
 │   ├── index.html                #   landing page (Telegram CTA deep link)
 │   ├── terms.html                #   Terms of Service
 │   ├── assets/style.css          #   shared styles

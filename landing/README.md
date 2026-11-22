@@ -1,6 +1,6 @@
 # ReMed landing site
 
-Static site served at https://remit.appsforlife.app (AppsForLife / Coolify).
+Static site served at https://remed.appsforlife.app (AppsForLife / Coolify).
 
 ```
 landing/
@@ -37,10 +37,10 @@ sips -z 16 16  /tmp/icon-master.svg.png --out favicon-16.png
 
 1. Push the repo; in Coolify: **New Resource → Dockerfile**, select this repo.
 2. Set **Docker Build Context Directory** to `/landing` and **Port** to `80`.
-3. In the resource's **Domains**, set `https://remit.appsforlife.app` — Coolify
+3. In the resource's **Domains**, set `https://remed.appsforlife.app` — Coolify
    issues the certificate via its proxy (your Coolify instance already does
    this for the main domain), so nothing needs to change in Cloudflare DNS
-   beyond the `remit` record you already created.
+   beyond the `remed` record you already created.
 
 ## Editing the channel links
 

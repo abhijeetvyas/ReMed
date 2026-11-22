@@ -15,3 +15,6 @@ scripts/_sim.db*
 
 # OS junk
 .DS_Store
+
+# internal review docs
+REVIEW_REPORT*.md

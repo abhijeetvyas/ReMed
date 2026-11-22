@@ -239,3 +239,29 @@ def test_send_failure_retries_then_expires_silently(tmp_db, fixed_today):
     assert db.query_one("SELECT state FROM reminder_queue") ["state"] == "expired"
     asyncio.run(engine.tick(tg, now=due + timedelta(seconds=120)))
     assert tg.send_attempts == 3
+
+
+def test_prescription_level_pause_blocks_sends(tmp_db, tg, fixed_today):
+    """Founder rule: pause lives on the prescription. A paused prescription is
+    silent even while the user itself is not paused."""
+    import asyncio
+    chat = "555"
+    _ = db.ensure_user(chat)
+    from app import changesets
+    session = changesets.draft_session(db.get_user(chat), [
+        {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
+         "slots": ["breakfast"], "food": "after", "duration_days": 2},
+    ])
+    with db.tx() as conn:
+        changesets.apply_session(conn, chat, session, NOW)
+    due = datetime.fromisoformat(db.query_one(
+        "SELECT MIN(scheduled_time_utc) t FROM dose_events")["t"]) + timedelta(seconds=5)
+
+    # pause only the prescription, not the user
+    db.execute("UPDATE prescriptions SET paused=1 WHERE chat_id=?", (chat,))
+    asyncio.run(engine.tick(tg, now=due))
+    assert len(tg.buttoned) == 0  # prescription paused → nothing sent
+
+    db.execute("UPDATE prescriptions SET paused=0 WHERE chat_id=?", (chat,))
+    asyncio.run(engine.tick(tg, now=due))
+    assert len(tg.buttoned) == 1  # resumed → sends

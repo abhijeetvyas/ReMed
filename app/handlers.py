@@ -41,11 +41,52 @@ async def handle_event(tg: Telegram, event: dict) -> None:
     chat_id = event["chat_id"]
     db.ensure_user(chat_id)  # identity = chat ID, created silently on first contact
     if event["kind"] == "photo":
+        db.log_user_message(chat_id, "photo", None)
         await _intake_photo(tg, chat_id, event["file_id"])
     elif event["kind"] == "callback":
         await _handle_callback(tg, chat_id, event)
     elif event["kind"] == "text":
+        db.log_user_message(chat_id, "command" if event["text"].startswith("/") else "free_text",
+                            event["text"])
         await _handle_text(tg, chat_id, event["text"])
+
+
+# ---------------------------------------------------------------- AI call wrappers (logged for the golden set)
+
+async def _call_extract_logged(chat_id: str, image: bytes) -> dict:
+    """extract ① with full input/output persisted to ai_calls."""
+    import time
+    t0 = time.perf_counter()
+    try:
+        out = await extract_prescription(image)
+        db.log_ai_call(chat_id, "extract", model=settings.ai_model, input_image=image,
+                       output=json.dumps(out), ok=True,
+                       latency_ms=int((time.perf_counter() - t0) * 1000))
+        return out
+    except Exception as e:
+        db.log_ai_call(chat_id, "extract", model=settings.ai_model, input_image=image,
+                       ok=False, error=f"{type(e).__name__}: {e}",
+                       latency_ms=int((time.perf_counter() - t0) * 1000))
+        raise
+
+
+async def _call_interpret_logged(chat_id: str, text: str, context: dict) -> dict:
+    """interpret ② with request + current state + output persisted to ai_calls."""
+    import time
+    t0 = time.perf_counter()
+    try:
+        out = await interpret_edit(text, context)
+        db.log_ai_call(chat_id, "interpret", model=settings.ai_model,
+                       input_text=json.dumps({"request": text, "context": context}),
+                       output=json.dumps(out), ok=True,
+                       latency_ms=int((time.perf_counter() - t0) * 1000))
+        return out
+    except Exception as e:
+        db.log_ai_call(chat_id, "interpret", model=settings.ai_model,
+                       input_text=json.dumps({"request": text, "context": context}),
+                       ok=False, error=f"{type(e).__name__}: {e}",
+                       latency_ms=int((time.perf_counter() - t0) * 1000))
+        raise
 
 
 def _redirect_edit(text: str) -> bool:
@@ -99,13 +140,33 @@ async def _handle_command(tg: Telegram, chat_id: str, text: str) -> None:
         await _start_edit(tg, chat_id)
     elif cmd == "/prescriptions":
         await tg.send_text(chat_id, rendering.prescriptions_message(chat_id))
-    elif cmd == "/pause":
-        db.execute("UPDATE users SET paused=1 WHERE chat_id=?", (chat_id,))
-        await tg.send_text(chat_id, "⏸ Reminders paused. Your schedule is untouched — /resume any time. "
-                                    "You can still edit your prescription.")
-    elif cmd == "/resume":
-        db.execute("UPDATE users SET paused=0 WHERE chat_id=?", (chat_id,))
-        await tg.send_text(chat_id, "▶️ Reminders resumed.")
+    elif cmd in ("/pause", "/resume"):
+        val = 1 if cmd == "/pause" else 0
+        arg = arg.strip()
+        if arg:
+            # prescription-level pause (founder): /pause Azithro pauses only
+            # that prescription's reminders, on top of the user master switch
+            chosen = [rx for rx in db.active_prescriptions(chat_id)
+                      if any(arg.lower() in m["name"].lower() for m in db.medicines_for(rx["id"]))]
+            if not chosen:
+                await tg.send_text(chat_id, f"I couldn't find an active prescription containing '{arg}'.")
+                return
+            labels = []
+            with db.tx() as conn:
+                for rx in chosen:
+                    conn.execute("UPDATE prescriptions SET paused=? WHERE id=?", (val, rx["id"]))
+                    labels += [m["name"] for m in db.medicines_for(rx["id"])]
+            word = "reminders off" if val else "reminders back on"
+            icon = "⏸" if val else "▶️"
+            await tg.send_text(chat_id, f"{icon} {word} — {', '.join(sorted(set(labels)))}.")
+        else:
+            db.execute("UPDATE users SET paused=? WHERE chat_id=?", (val, chat_id))
+            db.execute("UPDATE prescriptions SET paused=? WHERE chat_id=? AND status='active'", (val, chat_id))
+            if val:
+                await tg.send_text(chat_id, "⏸ Reminders paused for all your prescriptions. Your schedules are "
+                                            "untouched — /resume any time. You can still edit your prescription.")
+            else:
+                await tg.send_text(chat_id, "▶️ Reminders resumed.")
     elif cmd == "/cancel":
         await _handle_cancel(tg, chat_id, arg.strip())
     elif cmd == "/delete":
@@ -124,7 +185,7 @@ async def _intake_photo(tg: Telegram, chat_id: str, file_id: str) -> None:
     await tg.send_text(chat_id, "📷 Got it. Reading your prescription…")
     try:
         image = await download_photo(settings.bot_token, file_id)
-        raw = await extract_prescription(image)
+        raw = await _call_extract_logged(chat_id, image)
         medicines = scheduling.validate_draft_medicines(raw.get("medicines", []))
     except (AIError, ValidationError, TelegramError) as e:
         log.warning("intake failed (no contents logged): %s", type(e).__name__)
@@ -176,7 +237,7 @@ async def _handle_edit_text(tg: Telegram, chat_id: str, text: str) -> None:
         return
     session = json.loads(state["payload"])["session"]
     try:
-        result = await interpret_edit(text, _context_for(session))
+        result = await _call_interpret_logged(chat_id, text, _context_for(session))
         ops = result.get("operations") or []
         clarify = result.get("clarify")
         if clarify:
@@ -206,7 +267,7 @@ async def _handle_edit_text(tg: Telegram, chat_id: str, text: str) -> None:
 async def _handle_stray_text(tg: Telegram, chat_id: str, text: str) -> None:
     session = changesets.draft_session(db.get_user(chat_id), [])
     try:
-        result = await interpret_edit(text, _context_for(session))
+        result = await _call_interpret_logged(chat_id, text, _context_for(session))
         ops = result.get("operations") or []
         clarify = result.get("clarify")
         if clarify:
@@ -307,6 +368,8 @@ async def _handle_delete_confirm(tg: Telegram, chat_id: str, text: str) -> None:
                          " (SELECT id FROM prescriptions WHERE chat_id=?)", (chat_id,))
             conn.execute("DELETE FROM prescriptions WHERE chat_id=?", (chat_id,))
             conn.execute("DELETE FROM conversation_state WHERE chat_id=?", (chat_id,))
+            conn.execute("DELETE FROM user_messages WHERE chat_id=?", (chat_id,))
+            conn.execute("DELETE FROM ai_calls WHERE chat_id=?", (chat_id,))
             conn.execute("DELETE FROM users WHERE chat_id=?", (chat_id,))
         await tg.send_text(chat_id, "🗑 Everything deleted. Send a photo any time to start fresh.")
     else:

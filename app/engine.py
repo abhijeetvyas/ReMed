@@ -44,8 +44,10 @@ async def tick(tg: Telegram, now: datetime | None = None) -> None:
         " FROM reminder_queue rq"
         " JOIN dose_events de ON de.id = rq.dose_event_id"
         " JOIN medicines m ON m.id = de.medicine_id"
+        " JOIN prescriptions p ON p.id = m.prescription_id"
         " JOIN users u ON u.chat_id = rq.chat_id"
-        " WHERE rq.state='pending' AND rq.send_at <= ? AND de.status='pending' AND u.paused=0"
+        " WHERE rq.state='pending' AND rq.send_at <= ? AND de.status='pending'"
+        "   AND u.paused=0 AND p.paused=0 AND p.status='active'"
         " ORDER BY de.scheduled_time_utc LIMIT 200",
         (now_s,),
     )

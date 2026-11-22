@@ -22,6 +22,19 @@ class BadOperation(Exception):
     pass
 
 
+def _require_grid_minutes(minute_value: int, what: str) -> None:
+    """All user-facing times sit on the TIME_GRID_MIN grid (…:00/:15/:30/:45),
+    so reminder delivery (engine ticks on the same grid) is never more than one
+    grid step after the intended moment."""
+    if minute_value % settings_time_grid() != 0:
+        raise BadOperation(f"{what} must be on a 15-minute mark (…:00, …:15, …:30, …:45)")
+
+
+def settings_time_grid() -> int:
+    from .config import TIME_GRID_MIN
+    return TIME_GRID_MIN
+
+
 # ---------------------------------------------------------------- snapshots
 
 def draft_session(user_row, medicines: list[dict]) -> dict:
@@ -101,9 +114,11 @@ def validate_operation(session: dict, op: dict) -> None:
         if slot not in SLOTS:
             raise BadOperation("which meal — breakfast, lunch or dinner?")
         try:
-            session["user"]["meals"][slot] = fmt_hhmm(parse_hhmm(str(op.get("new_value", ""))))
+            t = parse_hhmm(str(op.get("new_value", "")))
         except ValidationError as e:
             raise BadOperation(str(e))
+        _require_grid_minutes(t.minute, "meal time")
+        session["user"]["meals"][slot] = fmt_hhmm(t)
         session["user_changed"] = True
     elif kind == "set_offset":
         which = str(op.get("target", "")).lower()
@@ -115,6 +130,7 @@ def validate_operation(session: dict, op: dict) -> None:
             raise BadOperation("offset must be a number of minutes")
         if not (-180 <= minutes <= 180):
             raise BadOperation("offset must be within 180 minutes")
+        _require_grid_minutes(abs(minutes), "offset")
         session["user"][f"offset_{which}_min"] = -abs(minutes) if which == "before" else abs(minutes)
         session["user_changed"] = True
     elif kind == "set_timezone":

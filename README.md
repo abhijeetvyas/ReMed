@@ -7,13 +7,19 @@ Built against `tech-design-deep-dive.md` (tables, state machines, AI contracts),
 ## Status — first working slice (MVP core, tested)
 
 - ✅ Photo intake → AI extraction → validation → draft → **confirmation gate** → Apply → whole course expanded into `dose_events` + precomputed `reminder_queue` (deep dive §5 scheduling math; no send-time math, DST-safe, past times never re-sent).
-- ✅ Reminder engine: 30 s DB-backed loop, delivery ack, ≤3 silent retries, silent missed after the window, pause-aware. Restarts lose nothing (queue lives in SQLite).
+- ✅ Reminder engine: 15-min DB-backed loop (`TICK_SECONDS`, all times on a 15-minute grid), delivery ack, ≤3 silent retries, silent missed after the window, pause-aware (pause is prescription-level: `prescriptions.paused` + user master switch; `/pause Azithro` pauses one, `/pause` pauses all). Restarts lose nothing (queue lives in SQLite).
 - ✅ Taken/Skip buttons → **silent ack** (no reply message, buttons clear, idempotent — a replayed press is ignored; ✅ can never ack a future day's dose).
 - ✅ Edit Prescription: free text → AI change-set against the current object → ambiguity → one clarifying question → FULL updated table → Apply → only future pending rows recomputed; taken/skipped history immutable.
 - ✅ Commands: /start /today /edit /prescriptions /pause /resume /cancel /delete /help. Stray free text honored as "type it in your own words" input. Webhook dedup by `update_id`; typed-YES `/delete` wipes everything in one transaction.
 - ⛔ Not built (deliberately, per design decision doc): course/expiry notifications, catch-up messages, time-zone change prompts, merged multi-prescription reminders, WhatsApp adapter.
 
-**26 tests** pass (`pytest tests/`): scheduling math, template shapes, change-set all-or-nothing validation, and two simulated-clock end-to-end flows (photo→apply→remind→ack→missed; /edit→apply→recompute) plus webhook dedup/secret and retry-expiry drills.
+**28 tests** pass (`pytest tests/`): scheduling math, template shapes, change-set all-or-nothing validation, 15-minute-grid rules, prescription-level pause, and simulated-clock end-to-end flows (photo→apply→remind→ack→missed; /edit→apply→recompute) plus webhook dedup/secret and retry-expiry drills.
+
+**Observability tables** (not user-facing): `ai_calls` — every AI call with input, output, model, latency, ok/error (photo bytes included, kept deliberately for the golden dataset — the one privacy exception to "images deleted after transcription"); `user_messages` — every inbound command / free text / photo. Both wiped by `/delete`.
+
+**Prompts** live one file each under `app/prompts/` (`extract.md`, `interpret_edit.md`) and are loaded by `app/ai.py` — edit them without touching code.
+
+`chat-simulation.html` is a generated artifact (script: `scripts/simulate_chat.py`) showing exact bot outputs for a full simulated user journey.
 
 ## Run it
 

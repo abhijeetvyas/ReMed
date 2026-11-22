@@ -9,3 +9,6 @@ __pycache__/
 *.db
 *.db-wal
 *.db-shm
+
+# local artifacts
+scripts/_sim.db*

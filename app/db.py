@@ -1,7 +1,8 @@
-"""SQLite layer — 6 tables, plain SQL. Times stored as UTC ISO-8601 strings."""
+"""SQLite layer — 6 data tables (+ meta, ai_calls, user_messages logs), plain SQL. Times stored as UTC ISO-8601 strings."""
 import json
 import sqlite3
 import threading
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -14,14 +15,19 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
 
 CREATE TABLE IF NOT EXISTS users(
-  chat_id TEXT PRIMARY KEY,
+  chat_id TEXT PRIMARY KEY,          -- channel identity (telegram). Planned rename → channel_ref at WhatsApp time.
+  id TEXT UNIQUE,                    -- internal user id (uuid); the stable cross-channel key for the future
+  channel TEXT DEFAULT 'telegram',   -- which channel this chat_id belongs to
+  full_name TEXT,                    -- future PII fields; empty today (bot stores no names)
+  phone TEXT,
+  email TEXT,
   timezone TEXT NOT NULL,
   meal_breakfast TEXT NOT NULL DEFAULT '08:00',
   meal_lunch TEXT NOT NULL DEFAULT '14:00',
   meal_dinner TEXT NOT NULL DEFAULT '19:00',
   offset_before_min INTEGER NOT NULL DEFAULT -15,
   offset_after_min INTEGER NOT NULL DEFAULT 45,
-  paused INTEGER NOT NULL DEFAULT 0,
+  paused INTEGER NOT NULL DEFAULT 0, -- user-level master switch; see prescriptions.paused
   created_at TEXT NOT NULL,
   deleted_at TEXT
 );
@@ -32,6 +38,7 @@ CREATE TABLE IF NOT EXISTS prescriptions(
   start_date TEXT NOT NULL,
   end_date TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('draft','active','cancelled','expired')),
+  paused INTEGER NOT NULL DEFAULT 0, -- prescription-level pause (founder: pause is per prescription)
   image_deleted INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
 );
@@ -78,6 +85,34 @@ CREATE TABLE IF NOT EXISTS conversation_state(
   expires_at TEXT NOT NULL
 );
 
+-- AI observability (founder ask): every AI call ① extract / ② interpret, with
+-- input, output and metadata, to build a golden dataset and tune prompts later.
+CREATE TABLE IF NOT EXISTS ai_calls(
+  id TEXT PRIMARY KEY,
+  chat_id TEXT,                      -- null only if identity creation itself failed
+  kind TEXT NOT NULL CHECK(kind IN ('extract','interpret')),
+  model TEXT,
+  input_text TEXT,                   -- interpret: user request + context; extract: null
+  input_image BLOB,                  -- extract: the photo bytes (kept for the golden set — privacy exception, see README)
+  output TEXT,                       -- raw model JSON, or null on failure
+  ok INTEGER NOT NULL,
+  error TEXT,
+  latency_ms INTEGER,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ai_calls_chat ON ai_calls(chat_id, created_at);
+
+-- Full inbound message log (founder ask): every command / free text / photo
+-- the user sends, for debugging and future model improvement.
+CREATE TABLE IF NOT EXISTS user_messages(
+  id TEXT PRIMARY KEY,
+  chat_id TEXT NOT NULL,
+  kind TEXT NOT NULL,                -- 'command' | 'free_text' | 'photo'
+  text TEXT,                         -- null for photos (kind='photo')
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_user_messages_chat ON user_messages(chat_id, created_at);
+
 CREATE INDEX IF NOT EXISTS idx_queue_due ON reminder_queue(send_at, state);
 CREATE INDEX IF NOT EXISTS idx_events_user_date ON dose_events(chat_id, event_date);
 CREATE INDEX IF NOT EXISTS idx_events_medicine ON dose_events(medicine_id);
@@ -95,7 +130,29 @@ def init(db_path: str | None = None) -> None:
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.execute("PRAGMA foreign_keys=ON")
         _conn.executescript(SCHEMA)
+        _migrate()
         _conn.commit()
+
+
+def _migrate() -> None:
+    """Column additions for databases created before these existed (SQLite has
+    no ADD COLUMN IF NOT EXISTS — errors are expected and ignored)."""
+    alts = (
+        "ALTER TABLE users ADD COLUMN id TEXT",
+        "ALTER TABLE users ADD COLUMN channel TEXT DEFAULT 'telegram'",
+        "ALTER TABLE users ADD COLUMN full_name TEXT",
+        "ALTER TABLE users ADD COLUMN phone TEXT",
+        "ALTER TABLE users ADD COLUMN email TEXT",
+        "ALTER TABLE prescriptions ADD COLUMN paused INTEGER NOT NULL DEFAULT 0",
+    )
+    for stmt in alts:
+        try:
+            _conn.execute(stmt)
+        except sqlite3.OperationalError:
+            pass
+    # backfill internal ids for rows created before the column existed
+    _conn.execute("UPDATE users SET id=? WHERE id IS NULL", (uuid.uuid4().hex,))
+    _conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_id ON users(id)")
 
 
 def get_conn() -> sqlite3.Connection:
@@ -159,16 +216,18 @@ def get_user(chat_id: str) -> sqlite3.Row | None:
 
 
 def ensure_user(chat_id: str) -> sqlite3.Row:
-    """Create the identity row silently on first contact (Flow 0)."""
+    """Create the identity row silently on first contact (Flow 0). Every user
+    gets an internal uuid `id` in addition to the channel identity (chat_id),
+    so future cross-channel / cross-table references need not key on chat_id."""
     user = get_user(chat_id)
     if user:
         return user
     s = settings
     execute(
-        "INSERT INTO users(chat_id, timezone, meal_breakfast, meal_lunch, meal_dinner,"
-        " offset_before_min, offset_after_min, paused, created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-        (chat_id, s.default_timezone, s.meal_breakfast, s.meal_lunch, s.meal_dinner,
-         s.offset_before_min, s.offset_after_min, 0, now_iso()),
+        "INSERT INTO users(id, channel, chat_id, timezone, meal_breakfast, meal_lunch, meal_dinner,"
+        " offset_before_min, offset_after_min, paused, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        (uuid.uuid4().hex, "telegram", chat_id, s.default_timezone, s.meal_breakfast, s.meal_lunch,
+         s.meal_dinner, s.offset_before_min, s.offset_after_min, 0, now_iso()),
     )
     return get_user(chat_id)  # type: ignore[return-value]
 
@@ -254,3 +313,26 @@ def set_state(chat_id: str, state: str, payload: dict) -> None:
 
 def clear_state(chat_id: str) -> None:
     execute("DELETE FROM conversation_state WHERE chat_id=?", (chat_id,))
+
+
+# ---------------------------------------------------------------- logs (AI calls & user messages)
+
+def log_ai_call(chat_id: str | None, kind: str, *, model: str | None, input_text: str | None = None,
+                input_image: bytes | None = None, output: str | None = None, ok: bool,
+                error: str | None = None, latency_ms: int | None = None) -> None:
+    """Persist one AI call with full input/output + metadata (golden-dataset table)."""
+    execute(
+        "INSERT INTO ai_calls(id, chat_id, kind, model, input_text, input_image, output, ok, error,"
+        " latency_ms, created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        (uuid.uuid4().hex, chat_id, kind, model, input_text,
+         sqlite3.Binary(input_image) if input_image is not None else None,
+         output, 1 if ok else 0, error[:500] if error else None, latency_ms, now_iso()),
+    )
+
+
+def log_user_message(chat_id: str, kind: str, text: str | None) -> None:
+    """Persist every inbound user message (command / free text / photo)."""
+    execute(
+        "INSERT INTO user_messages(id, chat_id, kind, text, created_at) VALUES(?,?,?,?,?)",
+        (uuid.uuid4().hex, chat_id, kind, text, now_iso()),
+    )

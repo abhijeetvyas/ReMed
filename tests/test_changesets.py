@@ -52,14 +52,32 @@ def test_meal_time_and_offset_ops(tmp_db, fixed_today):
     session, _ = _live_session(tmp_db)
     changesets.apply_operations(session, [
         {"op": "set_meal_time", "target": "dinner", "new_value": "20:30"},
-        {"op": "set_offset", "target": "before", "new_value": -20},
+        {"op": "set_offset", "target": "before", "new_value": -30},
         {"op": "set_offset", "target": "after", "new_value": 60},
     ])
     u = session["user"]
     assert u["meals"]["dinner"] == "20:30"
-    assert u["offset_before_min"] == -20
+    assert u["offset_before_min"] == -30
     assert u["offset_after_min"] == 60
     assert u["meals"]["breakfast"] == "08:00"  # untouched
+
+
+def test_fifteen_minute_grid_enforced(tmp_db, fixed_today):
+    """Founder rule: meal times and offsets land only on 15-minute marks."""
+    session, _ = _live_session(tmp_db)
+    for op in (
+        {"op": "set_meal_time", "target": "dinner", "new_value": "19:40"},
+        {"op": "set_offset", "target": "before", "new_value": -20},
+        {"op": "set_offset", "target": "after", "new_value": 50},
+    ):
+        try:
+            changesets.apply_operations(session, [op])
+            assert False, f"should reject off-grid {op}"
+        except changesets.BadOperation:
+            pass
+    # on-grid values pass
+    changesets.apply_operations(session, [{"op": "set_meal_time", "target": "dinner", "new_value": "21:45"}])
+    assert session["user"]["meals"]["dinner"] == "21:45"
 
 
 def test_bad_meal_time_and_timezone(tmp_db, fixed_today):

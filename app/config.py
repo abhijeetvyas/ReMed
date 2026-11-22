@@ -26,6 +26,11 @@ SLOTS = ("breakfast", "lunch", "dinner")
 FOODS = ("before", "after")
 FORMS = ("tablet", "capsule", "syrup", "other")
 
+# All user-facing times live on this grid: meal times, food offsets, and the
+# engine tick. Keeps reminder delivery predictable (≤1 tick late) and the
+# mental model simple (:00 / :15 / :30 / :45).
+TIME_GRID_MIN = 15
+
 
 def _int(name: str, default: int) -> int:
     try:
@@ -60,8 +65,8 @@ class Settings:
     offset_before_min: int = field(default_factory=lambda: _int("OFFSET_BEFORE_MIN", -15))
     offset_after_min: int = field(default_factory=lambda: _int("OFFSET_AFTER_MIN", 45))
 
-    # Reminder engine
-    tick_seconds: int = field(default_factory=lambda: _int("TICK_SECONDS", 30))
+    # Reminder engine (tick default: every 15 min, matching the time grid)
+    tick_seconds: int = field(default_factory=lambda: _int("TICK_SECONDS", 900))
     reminder_window_min: int = field(default_factory=lambda: _int("REMINDER_WINDOW_MIN", 180))  # after this, silent missed
     max_send_attempts: int = field(default_factory=lambda: _int("MAX_SEND_ATTEMPTS", 3))
     retry_backoff_seconds: int = field(default_factory=lambda: _int("RETRY_BACKOFF_SECONDS", 30))

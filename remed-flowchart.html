@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReMed — What We Built · Flowchart v0.2 (as-built)</title>
+<style>
+  :root{
+    --bg:#f7f6f3; --ink:#26221c; --muted:#6f6a61; --line:#d8d3c9;
+    --user:#3b6ea5; --ai:#8a4fb8; --code:#3f7d4e; --gate:#b8860b;
+    --store:#5c5347; --warn:#b0483a; --park:#8b8680;
+    --user-bg:#e8f0f8; --ai-bg:#f1e8f8; --code-bg:#e9f3eb; --gate-bg:#fdf3dc;
+    --store-bg:#eeeae4; --park-bg:#efedea;
+  }
+  *{box-sizing:border-box}
+  body{font-family:"Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--ink);
+       margin:0;padding:2rem;line-height:1.45}
+  h1{font-size:1.5rem;margin:0 0 .2rem}
+  h2{font-size:1.05rem;margin:2.2rem 0 .6rem;padding-bottom:.3rem;border-bottom:2px solid var(--line)}
+  h2 .tag{font-weight:400;color:var(--muted);font-size:.8rem}
+  .sub{color:var(--muted);font-size:.9rem;margin-bottom:1rem}
+  .wrap{max-width:960px;margin:0 auto}
+  .legend{display:flex;flex-wrap:wrap;gap:.5rem;margin:1rem 0 .5rem;font-size:.8rem}
+  .legend span{padding:.25rem .6rem;border-radius:999px;border:1px solid var(--line);background:#fff}
+  .node{display:inline-block;padding:.5rem .8rem;border-radius:8px;border:1px solid var(--line);
+        background:#fff;font-size:.87rem;max-width:100%}
+  .node b{display:block;font-size:.9rem}
+  .node small{color:var(--muted)}
+  .n-user{background:var(--user-bg);border-color:var(--user)}
+  .n-ai{background:var(--ai-bg);border-color:var(--ai)}
+  .n-code{background:var(--code-bg);border-color:var(--code)}
+  .n-store{background:var(--store-bg);border-color:var(--store)}
+  .n-gate{background:var(--gate-bg);border-color:var(--gate);border-width:2px}
+  .n-park{color:var(--park);border-style:dashed;background:var(--park-bg)}
+  .n-new{outline:2px dashed var(--warn);outline-offset:2px}
+  .col{display:flex;flex-direction:column;align-items:center;gap:.35rem}
+  .arr{color:var(--muted);font-size:.8rem;text-align:center}
+  .arr::before{content:"↓";display:block;font-size:1rem;color:#a49e93}
+  .arr.back::before{content:"↑"}
+  .row{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+  .row .col{flex:1;min-width:180px}
+  .panel{background:var(--store-bg);border:1px solid var(--line);border-radius:10px;padding:1rem}
+  .panel h3{margin:.1rem 0 .5rem;font-size:.85rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  table{border-collapse:collapse;width:100%;font-size:.83rem;background:#fff;border-radius:8px;overflow:hidden}
+  th,td{border:1px solid var(--line);padding:.4rem .55rem;text-align:left;vertical-align:top}
+  th{background:#efece7;font-weight:600}
+  td.mono,span.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.78rem}
+  .pill{display:inline-block;font-size:.7rem;padding:.05rem .45rem;border-radius:999px;
+        border:1px solid var(--line);background:#fff;color:var(--muted);vertical-align:middle}
+  .note{font-size:.8rem;color:var(--muted);margin:.4rem 0 0}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .callout{border-left:3px solid var(--gate);background:var(--gate-bg);padding:.6rem .8rem;
+           border-radius:0 8px 8px 0;font-size:.85rem;margin-top:.8rem}
+  .file{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;color:var(--muted)}
+  .status-ok{color:var(--code);font-weight:600}
+  .status-no{color:var(--park)}
+  .flow-title{font-size:.85rem;font-weight:700;margin-bottom:.4rem;text-transform:uppercase;
+              letter-spacing:.04em;color:var(--store)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ReMed — What We Built</h1>
+<p class="sub">Flowchart v0.2 · <b>as-built</b> (code committed, no external accounts touched).
+Mirrors <span class="file">remed-flowchart.md</span>, updated where implementation required a decision.
+Amber = human confirmation gate. Dashed-red outline = decided differently during the build.</p>
+
+<div class="legend">
+  <span><b style="color:var(--user)">■</b> User-facing</span>
+  <span><b style="color:var(--ai)">■</b> AI (proposes only)</span>
+  <span><b style="color:var(--code)">■</b> Plain code (validates/applies)</span>
+  <span><b style="color:var(--gate)">■</b> Confirmation gate</span>
+  <span><b style="color:var(--store)">■</b> Storage</span>
+  <span><b style="color:var(--park)">■</b> Parked / future</span>
+</div>
+
+<!-- ═══════════════════════════ 1 · BIG PICTURE ═══════════════════════════ -->
+<h2>1 · Big picture <span class="tag">— one process, five parts, SQLite</span></h2>
+
+<div class="row">
+  <div class="col">
+    <div class="node n-user"><b>📱 User</b>Telegram chat<small> · chat_id = identity</small></div>
+    <span class="arr"></span>
+    <div class="node n-code"><b>Channel adapter</b><span class="file">telegram.py</span>
+      <small>the only module that knows the Bot API — inbound photo/text/callback out, outbound text/buttons/button-clears</small></div>
+    <span class="arr"></span>
+    <div class="node n-code"><b>Router</b><span class="file">handlers.py</span>
+      <small>photo → intake · “Edit Prescription”/​/edit → edit · /cmds · state-aware free text · button taps</small></div>
+  </div>
+  <div class="col">
+    <div class="node n-ai"><b>🤖 AI layer</b><span class="file">ai.py</span>
+      <small>① Extract: image → medicines JSON<br>② Interpret edit: text + current object → change-set</small></div>
+    <span class="arr">proposals only — never writes</span>
+    <div class="node n-gate"><b>🔒 Validator + confirmation gate</b><span class="file">changesets.py</span>
+      <small>schema checks, ambiguity → one clarifying question, Apply buttons</small></div>
+  </div>
+  <div class="col">
+    <div class="node n-store"><b>🗄 SQLite</b><span class="file">db.py</span>
+      <small>users · prescriptions · medicines · dose_events · reminder_queue · conversation_state<br>
+      (WAL, plain SQL, Postgres-ready)</small></div>
+    <span class="arr back"></span>
+    <div class="node n-code"><b>⏰ Reminder engine</b><span class="file">engine.py</span>
+      <small>async loop, tick every 30 s · due rows → render → send → delivery ack</small></div>
+  </div>
+</div>
+<p class="note">FastAPI entrypoint <span class="file">main.py</span> (webhook + <span class="mono">/health</span>, secret-token + <span class="mono">update_id</span> replay dedup) ·
+local dev without TLS: <span class="file">polling.py</span> (long-polling) · WhatsApp later = second adapter behind the same interface.</p>
+
+<!-- ═══════════════════════════ 2 · FLOW A ═══════════════════════════ -->
+<h2>2 · Flow A — Photo intake <span class="tag">— verified end-to-end by a simulated-clock test</span></h2>
+
+<div class="col">
+  <div class="node n-user">📷 User sends photo</div>
+  <span class="arr">ack within ~2 s, before any reading</span>
+  <div class="node n-user">“Got it. Reading your prescription…”</div>
+  <span class="arr"></span>
+  <div class="row">
+    <div class="col">
+      <div class="node n-ai"><b>① AI Extract</b><small> image → <span class="mono">{medicines[{name, form, tablets_per_dose, slots, food, days}]}</span></small></div>
+    </div>
+    <div class="col">
+      <div class="node n-code"><b>✅ Validator</b><small> days 1–90 · ≥1 slot · slots/food/meal times parseable · no instant-burst rule</small></div>
+    </div>
+  </div>
+  <span class="arr">fail → 1 retry → <b>generic failure copy</b> + “type it in your own words” (empty draft stays open so typed text still works)</span>
+  <div class="node n-gate"><b>🔒 DRAFT SHOWN — nothing scheduled yet</b>
+    <small>fixed line format: NAME — meal slots — before/after food — [# tablets if ≠ 1] — # days<br>
+    tz line: “Scheduling in IST (UTC+5:30)” + meal defaults (8:00 / 14:00 / 19:00)<br>
+    buttons: [ ✅ Yes, start my reminders ] [ ✏️ Something's wrong → Flow B on the draft ]</small></div>
+  <span class="arr">user taps ✅</span>
+  <div class="node n-code"><b>APPLY — one transaction</b><span class="file">changesets.apply_session</span>
+    <small>1 prescriptions row + N medicines rows<br>
+    + <b>whole course expanded</b> into dose_events (15 days × 2 slots = 30 rows)
+    + reminder_queue rows with precomputed send_at (meal anchor ± offset → UTC)</small></div>
+  <span class="arr"></span>
+  <div class="node n-user">✅ “All set — N doses scheduled over the next X–Y days”<small>
+    today's remaining slots · per-medicine course-end dates · tip line</small></div>
+</div>
+<div class="callout">⚠️ <b>As-built detail:</b> expansion <b>skips times already past</b> — confirming at 3 PM never re-fires the morning's slots.
+Also: two medicines that share (day, slot, food) share one reminder group, so “✅ Taken — all N” can never ack a different day's dose.</div>
+
+<!-- ═══════════════════════════ 3 · FLOW B ═══════════════════════════ -->
+<h2>3 · Flow B — Edit Prescription <span class="tag">— free text, AI-processed; the flow most covered by tests</span></h2>
+
+<div class="col">
+  <div class="node n-user">“Edit Prescription” / <span class="mono">/edit</span><small> · works while paused · opens on the draft too</small></div>
+  <span class="arr"></span>
+  <div class="node n-user">Prompt with examples<small> (“actually 5 days and before food”, meal times, offsets, “stop Dolo 650”)</small></div>
+  <span class="arr">user types anything</span>
+  <div class="node n-ai"><b>② AI Interpret edit</b>
+    <small>IN: free text + current users/prescriptions/medicines JSON · temperature 0 · one call per iteration</small></div>
+  <span class="arr">change-set JSON (ops · target · fields → update / add / remove medicine · set meal time · set offset · set timezone · cancel prescription)</span>
+  <div class="node n-code"><b>✅ Validate change-set</b><span class="file">changesets.py</span>
+    <small>fuzzy name match · <b>2+ matches → one clarifying question, no proposal</b> · all-or-nothing (invalid op ⇒ whole edit rolled back)</small></div>
+  <span class="arr">valid</span>
+  <div class="node n-gate"><b>🔒 FULL updated prescription table</b>
+    <small>[ ✅ Apply ] [ ✏️ Wrong — try again ] — retry loop until Apply · unparseable → generic failure copy, same voice as intake failures</small></div>
+  <span class="arr">Apply — one transaction</span>
+  <div class="node n-code"><b>Recompute future rows only</b>
+    <small>meal/offset/timezone → recompute send_at of future pending events (all active prescriptions)<br>
+    medicine changes → recreate that medicine's future rows · <b>taken/skipped history is immutable</b> —
+    an explicitly answered dose is never re-reminded, even if its slot moves</small></div>
+</div>
+<div class="callout">🧪 <b>Regression story:</b> the tests caught two would-be-nasty bugs — future-day doses ackable via one button, and meal-time edits resurrecting taken doses. Both fixed and locked by tests.</div>
+
+<!-- ═══════════════════════════ 4 · FLOW C ═══════════════════════════ -->
+<h2>4 · Flow C — Reminder tick <span class="tag">— verified with simulated clock incl. outage drill</span></h2>
+
+<div class="col">
+  <div class="node n-code"><b>Tick (every 30 s, injected “now” in tests)</b>
+    <small>① missed sweep (window passed → silent <span class="mono">missed</span>; orphaned <span class="mono">sending</span> rows released)<br>
+    ② query due: <span class="mono">send_at ≤ now · state=pending · dose pending · user not paused · LIMIT 200</span></small></div>
+  <span class="arr">group by reminder_group → mark in-flight (no double-send)</span>
+  <div class="node n-user"><b>One message per slot group</b><small>
+    “⏰ 7:45 AM — 15 min before breakfast” + medicine lines + buttons<br>
+    single: [ ✅ Taken ] [ ⏭ Skip today ] · grouped: [ ✅ Taken — all N ] [ ⏭ Skip today ]</small></div>
+  <span class="arr">Bot API ok = delivered → <span class="mono">state=sent</span>, message_id stored</span>
+  <div class="row">
+    <div class="col">
+      <div class="node n-code"><b>Send fails?</b><small> ≤3 attempts w/ backoff inside window → then <span class="mono">expired</span>, silently. No nag.</small>
+      <span class="arr"></span><div class="node n-code">✅ tested: 3 attempts, then silence</div></div>
+    </div>
+    <div class="col">
+      <div class="node n-user"><b>User taps ✅ / ⏭</b><small>
+        status ← taken / skipped · responded_at stamped · <b>buttons clear, NO reply message</b> · replayed press ignored</small>
+      <span class="arr"></span><div class="node n-code">✅ tested: silent ack + idempotency</div></div>
+    </div>
+    <div class="col">
+      <div class="node n-code"><b>Window passes unanswered / paused</b><small>
+        → <span class="mono">missed</span>, recorded silently · raw rows only, no summaries (the future doctor-product fuel)</small>
+      <span class="arr"></span><div class="node n-code">✅ tested: pause blocks send, window still expires</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ 5 · DATA MODEL ═══════════════════════════ -->
+<h2>5 · Data model <span class="tag">— 6 tables · SQLite · all times UTC + user IANA tz</span></h2>
+
+<div class="grid2">
+  <div>
+    <table>
+      <tr><th>Table</th><th>Key fields <span class="pill">as implemented</span></th></tr>
+      <tr><td><b>users</b></td><td class="mono">chat_id 🔑 · timezone · meal_breakfast/lunch/dinner · offset_before_min (−15) · offset_after_min (45) · paused · created_at · deleted_at</td></tr>
+      <tr><td><b>prescriptions</b></td><td class="mono">id 🔑 · chat_id · start_date · end_date (computed) · status: active | cancelled | expired · image_deleted (=1; we never persist photos)</td></tr>
+      <tr><td><b>medicines</b></td><td class="mono">id 🔑 · prescription_id · name · form · tablets_per_dose (≠1 only shown) · slots (json) · food · duration_days <b>· removed**</b></td></tr>
+      <tr><td><b>dose_events</b></td><td class="mono">id 🔑 · medicine_id · chat_id · event_date · slot · scheduled_time_utc · status: pending→taken|skipped|missed · responded_at · reminder_message_id <b>· reminder_group**</b></td></tr>
+      <tr><td><b>reminder_queue</b></td><td class="mono">dose_event_id 🔑 · chat_id · send_at · state: pending|sending**|sent|failed|expired · attempts · last_error</td></tr>
+      <tr><td><b>conversation_state</b></td><td class="mono">chat_id 🔑 · state: pending_draft | pending_edit | pending_delete · payload (unapplied session JSON) · expires_at (30 min TTL)</td></tr>
+    </table>
+    <p class="note"><b>\*\*</b> = added during build (not in the deep-dive field list): <span class="mono">removed</span> soft-deletes medicines while keeping
+    adherence history joinable; <span class="mono">reminder_group</span> scopes button acks to one message (day+slot+food); <span class="mono">sending</span> is the in-flight state that prevents double-sends across ticks/crashes.<br>
+    Indexes per deep dive §7: <span class="mono">queue(send_at,state)</span> · <span class="mono">events(chat_id,event_date)</span> · <span class="mono">medicines(prescription_id)</span>.</p>
+  </div>
+  <div>
+    <div class="panel">
+      <h3>State machines (small, enumerable)</h3>
+      <table>
+        <tr><th>Entity</th><th>Path</th></tr>
+        <tr><td>Prescription</td><td class="mono">draft → active → cancelled | expired (computed)</td></tr>
+        <tr><td>Dose event</td><td class="mono">pending → taken | skipped | missed (silent)</td></tr>
+        <tr><td>Reminder job</td><td class="mono">pending → sending → sent | (fail → retry ≤3 → expired, silent)</td></tr>
+        <tr><td>Conversation</td><td class="mono">none ↔ pending_draft | pending_edit | pending_delete (TTL 30 min)</td></tr>
+      </table>
+      <h3 style="margin-top:.9rem">Privacy mechanics</h3>
+      <p class="note" style="margin:0">
+        • photos never written to disk — bytes live only inside the AI call<br>
+        • chat_id = the only PII<br>
+        • <span class="mono">/delete</span>: one transaction, all six tables, typed “YES” gate<br>
+        • logs: no message contents, no medicine names — chat_id allowed for support
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ 6 · AI + FILES ═══════════════════════════ -->
+<h2>6 · AI touchpoints + where the code lives <span class="tag">— provider-agnostic (any OpenAI-compatible endpoint)</span></h2>
+
+<div class="grid2">
+  <div>
+    <table>
+      <tr><th>Call</th><th>In</th><th>Out (validated by code)</th></tr>
+      <tr><td><b>① Extract</b><br><span class="file">ai.extract_prescription</span></td>
+          <td>photo bytes + fixed schema prompt</td>
+          <td class="mono">{medicines[{name, form, tablets_per_dose, slots, food, days}], notes}</td></tr>
+      <tr><td><b>② Interpret edit</b><br><span class="file">ai.interpret_edit</span></td>
+          <td>free text + current users/prescriptions JSON</td>
+          <td class="mono">{operations:[{op,target,fields,new_value}], clarify}</td></tr>
+    </table>
+    <div class="callout"><b>The rule that holds everywhere:</b> the AI only proposes. Ordinary code validates; every mutation to live data passes 🔒 Apply or an explicit command.</div>
+  </div>
+  <div>
+    <table>
+      <tr><th>File</th><th>Role</th></tr>
+      <tr><td class="file">app/config.py</td><td>env/.env settings — meals, offsets, defaults, engine knobs</td></tr>
+      <tr><td class="file">app/db.py</td><td>SQLite schema + all queries, WAL, tx helper</td></tr>
+      <tr><td class="file">app/scheduling.py</td><td>expand / recompute math, validators, skip-past + answered-dose guard</td></tr>
+      <tr><td class="file">app/changesets.py</td><td>change-set validation, ambiguity, snapshot apply, transactional persist</td></tr>
+      <tr><td class="file">app/ai.py</td><td>the 2 contracts + provider-agnostic client</td></tr>
+      <tr><td class="file">app/rendering.py</td><td>every user-facing template (conversation-script v0.2)</td></tr>
+      <tr><td class="file">app/handlers.py</td><td>router + Flows 0–6 + callbacks</td></tr>
+      <tr><td class="file">app/engine.py</td><td>reminder loop + missed sweep</td></tr>
+      <tr><td class="file">app/main.py</td><td>FastAPI: webhook (secret + dedup), /health</td></tr>
+      <tr><td class="file">app/polling.py</td><td>local dev: long-polling, no TLS needed</td></tr>
+      <tr><td class="file">app/telegram.py</td><td>channel adapter (WhatsApp-ready boundary)</td></tr>
+      <tr><td class="file">tests/</td><td>26 tests · simulated clock · FakeTelegram · outage + replay drills</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ 7 · BUILT VS PARKED ═══════════════════════════ -->
+<h2>7 · Scope check <span class="tag">— PRD v0.4 fence respected</span></h2>
+
+<div class="row">
+  <div class="col" style="min-width:300px">
+    <div class="flow-title">Built (and fenced to MVP)</div>
+    <table>
+      <tr><td class="status-ok">✅</td><td>Telegram webhooks + polling, /start, silent identity, dedup, /health</td></tr>
+      <tr><td class="status-ok">✅</td><td>Photo → extract → validate → draft → 🔒 confirm → expand course</td></tr>
+      <tr><td class="status-ok">✅</td><td>30-min reminder loop, one message per slot, grouped buttons, silent acks</td></tr>
+      <tr><td class="status-ok">✅</td><td>Edit Prescription: free text → validated change-set → FULL table → Apply</td></tr>
+      <tr><td class="status-ok">✅</td><td>/today /prescriptions /pause /resume /cancel+picker /delete(YES) /help</td></tr>
+      <tr><td class="status-ok">✅</td><td>Pause semantics, failed-delivery drill, replay dedup, copy fixtures</td></tr>
+      <tr><td><span class="n-new node" style="font-size:.8rem">≠</span></td>
+          <td><b>Timezone</b>: Bot API exposes none → defaults to <span class="mono">DEFAULT_TIMEZONE</span> (IST), shown at confirmation, editable in-chat (recomputes future rows). The “auto-detect” step doesn't exist — nothing to auto-detect from.</td></tr>
+      <tr><td><span class="n-new node" style="font-size:.8rem">≠</span></td>
+          <td><b>Stray text</b>: honored as typed prescription input (the “type it in your own words” promise), not just a /help nudge.</td></tr>
+    </table>
+  </div>
+  <div class="col" style="min-width:300px">
+    <div class="flow-title">Parked — untouched, as decided</div>
+    <table>
+      <tr><td class="status-no">⛔</td><td>Course/expiry notifications · downtime catch-up messages</td></tr>
+      <tr><td class="status-no">⛔</td><td>“Start tomorrow” UI (start_date field exists, day one)</td></tr>
+      <tr><td class="status-no">⛔</td><td>Duplicate-prescription disambiguation · merged reminders across prescriptions</td></tr>
+      <tr><td class="status-no">⛔</td><td>Timezone-change prompts · web view · adherence summaries</td></tr>
+      <tr><td class="status-no">⛔</td><td>WhatsApp adapter (interface already shaped for it) · doctor dashboard · payments · drug logic · multi-language · family mode</td></tr>
+    </table>
+    <div class="panel" style="margin-top:1rem">
+      <h3>Needs founder accounts (nothing created yet)</h3>
+      <p class="note" style="margin:0">
+        ① @BotFather token (check @ReMedBot availability — open item #1)<br>
+        ② AI provider key (Mistral/OpenAI-compatible)<br>
+        ③ any VPS/PaaS when we deploy
+      </p>
+    </div>
+  </div>
+</div>
+
+<p class="note" style="margin-top:2rem">Run locally: <span class="mono">.venv/bin/python -m app.polling</span> after <span class="mono">cp .env.example .env</span>.
+Tests: <span class="mono">pytest tests/</span> (26 passing · no network needed). Flowchart mirrors <span class="file">remed-flowchart.md</span> with as-built deltas marked.</p>
+
+</div>
+</body>
+</html>

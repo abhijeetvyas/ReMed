@@ -5,12 +5,18 @@ data without the user's explicit Apply.
 import base64
 import json
 import logging
+from pathlib import Path
 
 import httpx
 
 from .config import settings
 
 log = logging.getLogger("remed.ai")
+
+# Prompts live one file each under app/prompts/ so they can be edited without
+# touching code. The JSON schema block in extract.md is kept in sync with
+# MEDICINE_SCHEMA_EXAMPLE (used by tests).
+PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
 MEDICINE_SCHEMA_EXAMPLE = {
     "medicines": [
@@ -20,50 +26,20 @@ MEDICINE_SCHEMA_EXAMPLE = {
     "notes": []
 }
 
-EXTRACT_PROMPT = f"""You read photos of doctors' prescriptions and return ONLY a JSON object, no other text.
 
-Extract every oral medicine course you can read. Rules:
-- slots: subset of ["breakfast", "lunch", "dinner"] — infer from timing cues (morning, 1-0-1, after meals, etc.). Every medicine needs at least one slot.
-- food: "before" or "after" — from phrases like "before food", "1 hour before meals", "after food". Default "after".
-- days: duration of that medicine's course in days (e.g. "5 days", "1-0-1 × 7"). If only a quantity is given (e.g. 10 tablets) with 2 doses/day, compute days = quantity / doses_per_day.
-- tablets_per_dose: number of tablets per occasion. Use 1 unless the prescription clearly says otherwise (e.g. "2 tabs", "1+0+1" means 1).
-- form: tablet | capsule | syrup | other.
-- Copy medicine names and strengths exactly as written (including the strength, e.g. "Azithromycin 500").
-- Do NOT invent medicines, doses, or durations. Skip anything illegible; if nothing is legible, return {{"medicines": [], "notes": ["unreadable"]}}.
-- notes: anything worth flagging (illegible lines, non-oral items like ointments).
+def load_prompt(filename: str) -> str:
+    return (PROMPTS_DIR / filename).read_text(encoding="utf-8")
 
-JSON schema:
-{json.dumps(MEDICINE_SCHEMA_EXAMPLE)}"""
+
+EXTRACT_PROMPT = load_prompt("extract.md")
 
 
 def _edit_context_block(ctx: dict) -> str:
     return json.dumps(ctx, indent=1)
 
 
-INTERPRET_PROMPT = """You help edit a patient's confirmed prescriptions from their own words. Return ONLY a JSON object, no other text.
-
-You receive the CURRENT state (users settings + prescriptions with medicines) and the user's request in free text. Return an operation list:
-
-{ "operations": [ ... ], "clarify": null }
-
-Operation shapes (only include fields being changed):
-- {"op":"update_medicine","target":"<partial medicine name>","fields":{"slots":["breakfast","dinner"],"food":"before","days":5,"tablets_per_dose":2,"name":"Fixed Name"}}
-- {"op":"add_medicine","prescription":"<id or a medicine name in the target prescription, or 'new'>","fields":{"name":"Dolo 650","form":"tablet","tablets_per_dose":1,"slots":["breakfast","lunch","dinner"],"food":"after","days":3}}
-- {"op":"remove_medicine","target":"<partial medicine name>"}
-- {"op":"set_meal_time","target":"breakfast|lunch|dinner","new_value":"20:30"}
-- {"op":"set_offset","target":"before|after","new_value":-20}   (minutes; negative = minutes before meal)
-- {"op":"set_timezone","new_value":"Asia/Kolkata"}              (IANA name)
-- {"op":"cancel_prescription","target":"<a medicine name in it, or prescription id>"}
-
-Rules:
-- If the user's request is ambiguous (e.g. two medicines match, or you cannot tell which prescription), set "clarify" to ONE short question and leave operations empty.
-- Use the user's wording: "before food" → food before; "actually 5 days" → days 5; "doctor cancelled X" → remove_medicine or cancel_prescription.
-- Never invent numbers the user did not give. Change only what they asked.
-- "slots" always use the values breakfast/lunch/dinner.
-If the request cannot be mapped to operations, return {"operations": [], "clarify": null}.
-
-CURRENT STATE:
-"""
+def interpret_prompt() -> str:
+    return load_prompt("interpret_edit.md")
 
 
 class AIError(Exception):
@@ -129,5 +105,5 @@ async def interpret_edit(user_text: str, current_context: dict) -> dict:
     if not settings.ai_configured:
         raise AIError("AI provider not configured")
     client = AIClient()
-    prompt = INTERPRET_PROMPT + _edit_context_block(current_context) + "\n\nUSER REQUEST:\n" + user_text
-    return await client._complete_json(prompt, INTERPRET_PROMPT)
+    prompt = interpret_prompt() + _edit_context_block(current_context) + "\n\nUSER REQUEST:\n" + user_text
+    return await client._complete_json(prompt, prompt)

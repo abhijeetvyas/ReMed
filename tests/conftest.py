@@ -1,5 +1,10 @@
+import os
 import sys
 from pathlib import Path
+
+# Tests must be hermetic: pin webhook secret/dev credentials before app
+# modules load dotenv from the developer's real .env file.
+os.environ["WEBHOOK_SECRET"] = "remed-dev-secret"
 
 import pytest
 

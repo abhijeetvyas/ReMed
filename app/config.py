@@ -99,19 +99,25 @@ class Settings:
 
     # Guardrails (anti-abuse, per chat — generous for real users, tight vs floods).
     # Each photo is a paid vision call + a persisted image BLOB; each edit text a
-    # paid interpret call. Limits are hourly + daily, with a minimum gap between
-    # consecutive actions. Users verified against SUPER_USER_KEY (see /super)
-    # bypass every limit — for founder testing. Empty key = feature off.
-    photo_rate_per_hour: int = field(default_factory=lambda: _int("PHOTO_RATE_PER_HOUR", 6))
+    # paid interpret call; each /type description a paid text-extract call.
+    # Limits are hourly + daily — the hourly default is a sixth of the daily
+    # cap, so one busy hour can't burn the whole day's budget — plus a minimum
+    # gap (cooldown) between consecutive actions. Super users verified against
+    # SUPER_USER_KEY (see /super) bypass every limit including the cooldown —
+    # for founder testing. Empty key = feature off.
     photo_rate_per_day: int = field(default_factory=lambda: _int("PHOTO_RATE_PER_DAY", 24))
-    photo_min_gap_seconds: int = field(default_factory=lambda: _int("PHOTO_MIN_GAP_SECONDS", 60))
+    photo_rate_per_hour: int = field(
+        default_factory=lambda: _int("PHOTO_RATE_PER_HOUR", _int("PHOTO_RATE_PER_DAY", 24) // 6))
+    photo_min_gap_seconds: int = field(default_factory=lambda: _int("PHOTO_MIN_GAP_SECONDS", 30))
     photo_fails_per_hour: int = field(default_factory=lambda: _int("PHOTO_FAILS_PER_HOUR", 4))
-    edit_rate_per_hour: int = field(default_factory=lambda: _int("EDIT_RATE_PER_HOUR", 6))
     edit_rate_per_day: int = field(default_factory=lambda: _int("EDIT_RATE_PER_DAY", 24))
-    edit_min_gap_seconds: int = field(default_factory=lambda: _int("EDIT_MIN_GAP_SECONDS", 60))
-    apply_rate_per_hour: int = field(default_factory=lambda: _int("APPLY_RATE_PER_HOUR", 6))
+    edit_rate_per_hour: int = field(
+        default_factory=lambda: _int("EDIT_RATE_PER_HOUR", _int("EDIT_RATE_PER_DAY", 24) // 6))
+    edit_min_gap_seconds: int = field(default_factory=lambda: _int("EDIT_MIN_GAP_SECONDS", 30))
     apply_rate_per_day: int = field(default_factory=lambda: _int("APPLY_RATE_PER_DAY", 24))
-    apply_min_gap_seconds: int = field(default_factory=lambda: _int("APPLY_MIN_GAP_SECONDS", 60))
+    apply_rate_per_hour: int = field(
+        default_factory=lambda: _int("APPLY_RATE_PER_HOUR", _int("APPLY_RATE_PER_DAY", 24) // 6))
+    apply_min_gap_seconds: int = field(default_factory=lambda: _int("APPLY_MIN_GAP_SECONDS", 30))
     super_user_key: str = field(default_factory=lambda: os.environ.get("SUPER_USER_KEY", "").strip())
     max_text_len: int = field(default_factory=lambda: _int("MAX_TEXT_LEN", 1200))
     max_image_mb: int = field(default_factory=lambda: _int("MAX_IMAGE_MB", 10))

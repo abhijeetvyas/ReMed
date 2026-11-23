@@ -225,6 +225,7 @@ def help_message() -> str:
         "after you confirm.\n"
         "\n"
         "/today — today's remaining doses\n"
+        "/type — describe a prescription as text (no photo)\n"
         "/edit — edit your prescription (free text)\n"
         "/prescriptions — list my prescriptions\n"
         "/pause — pause all reminders (or one: /pause Azithro)\n"
@@ -246,11 +247,20 @@ def start_message() -> str:
 
 # ---------------------------------------------------------------- misc copy
 
+TYPE_ONBOARDING = (
+    "Sure — type out the prescription exactly as it's written, for example:\n"
+    "  • \"Azithromycin 500, before breakfast and dinner, 5 days\"\n"
+    "  • \"Dolo 650 two tablets morning and night for 3 days\"\n"
+    "  • \"Cetirizine syrup\" (I'll fill in sensible defaults)\n"
+    "\n"
+    "Send it as your next message, or /cancel to skip."
+)
+
 GENERIC_FAILURE = (
     "Hmm, that didn't work. 🙁\n"
     "\n"
     "Please try again — a clear, well-lit photo of just the medicines list works best, "
-    "or type it in your own words, e.g.\n"
+    "or use /type and describe it in your own words, e.g.\n"
     "   \"Azithromycin 500, before breakfast and dinner, 5 days\""
 )
 

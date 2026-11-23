@@ -10,8 +10,9 @@ active channel's templates.
 from .telegram import *  # noqa: F401,F403
 from .telegram import (  # explicit re-exports for tooling
     GENERIC_FAILURE, EDIT_FAILURE, EDIT_ONBOARDING, EDIT_ONBOARDING_DRAFT,
-    NUDGE, STATE_EXPIRED, clarifying_message, draft_message, edit_confirm_message,
-    fmt_local_date, fmt_local_time, help_message, medicine_line,
-    prescriptions_table, prescriptions_message, reminder_message,
-    scheduled_confirmation, start_message, today_message, tz_display,
+    NUDGE, STATE_EXPIRED, TYPE_ONBOARDING, clarifying_message, draft_message,
+    edit_confirm_message, fmt_local_date, fmt_local_time, help_message,
+    medicine_line, prescriptions_table, prescriptions_message,
+    reminder_message, scheduled_confirmation, start_message, today_message,
+    tz_display,
 )

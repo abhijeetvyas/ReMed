@@ -2,12 +2,14 @@
 
 The bot is one attacker (or one stuck loop) away from an AI bill, a bloated
 SQLite file, and a flooded reminder queue: every photo is a paid vision call
-plus a permanently-persisted image BLOB, every edit text a paid interpret call.
-This module adds cheap, realistic guardrails:
+plus a permanently-persisted image BLOB, every edit text a paid interpret
+call, every /type description a paid text-extract call. This module adds
+cheap, realistic guardrails:
 
 1. Per-chat sliding-window rate limits, per action bucket (photo / edit /
-   apply): hourly + daily caps, plus a minimum gap between consecutive actions
-   — throttles bursts without touching a genuine user's flow.
+   apply): hourly (default: a sixth of the daily cap) + daily caps, plus a
+   minimum gap (cooldown) between consecutive actions — throttles bursts
+   without touching a genuine user's flow.
 2. Photo-failure backoff — repeated unreadable photos stop spending AI calls
    and stop persisting blobs after a few failures in the window.
 3. Super users — a chat verified against the SUPER_USER_KEY secret (via the
@@ -64,14 +66,14 @@ _MAX_AGE_DAY = 86400.0
 
 _MSGS = {
     "photo": ("📷 You've sent a lot of prescription photos in a short time. "
-              "Give me about {mins} minute{s} and try again."),
+              "Give me {wait} and try again."),
     "photo_day": "📷 You've hit today's limit of {limit} photos. Please try again tomorrow.",
     "photo_fails": ("I keep having trouble reading your photos. Please send a "
                     "single, clear, well-lit photo of just the prescription — "
                     "try again in a few minutes."),
-    "edit": "✏️ That's a lot of edits at once — give me a moment, then try again in about {mins} minute{s}.",
+    "edit": "✏️ That's a lot of edits at once — give me {wait}, then try again.",
     "edit_day": "✏️ You've hit today's limit of {limit} edits. Please try again tomorrow.",
-    "apply": "⏳ Hold on — you've applied a lot of changes in a short time. Try again in about {mins} minute{s}.",
+    "apply": "⏳ Hold on — you've applied a lot of changes in a short time. Try again in {wait}.",
     "apply_day": "⏳ You've hit today's limit of {limit} applies. Please try again tomorrow.",
     "too_long": "📝 That message is very long. Please break it into a shorter edit, one change at a time.",
     "budget": "🤖 I'm at capacity for today — Google's free AI quota is used up. Please try again tomorrow.",
@@ -81,8 +83,13 @@ _MSGS = {
 
 
 def _fmt_wait(seconds: float) -> str:
+    """'~30 seconds' / '2 minutes' — accurate at the new 30 s cooldown scale
+    (rounding up to whole minutes hid a half-minute wait)."""
+    if seconds < 60:
+        n = max(5, int(round(seconds / 5.0)) * 5)
+        return f"~{n} seconds"
     mins = max(1, round(seconds / 60))
-    return mins, "" if mins == 1 else "s"
+    return f"about {mins} minute{'' if mins == 1 else 's'}"
 
 
 # ---- buckets ----------------------------------------------------------------
@@ -127,8 +134,7 @@ def check(chat_id: str, bucket: str, is_super: bool = False) -> str | None:
     if bucket == _PHOTO and len(w.photo_fails) >= settings.photo_fails_per_hour:
         first = w.photo_fails[0]
         if now - first < _MAX_AGE_HOUR:
-            mins, plural = _fmt_wait(_MAX_AGE_HOUR - (now - first))
-            return _MSGS["photo_fails"].format(mins=mins, s=plural)
+            return _MSGS["photo_fails"]
         w.photo_fails.clear()
 
     while w.hour and now - w.hour[0] > _MAX_AGE_HOUR:
@@ -149,8 +155,8 @@ def check(chat_id: str, bucket: str, is_super: bool = False) -> str | None:
     if len(w.day) >= limit_day:
         return _MSGS[f"{bucket}_day"].format(limit=limit_day)
     if len(w.hour) >= limit_hour:
-        mins, plural = _fmt_wait(_MAX_AGE_HOUR - (now - w.hour[0]))
-        return _MSGS[bucket].format(mins=mins, s=plural)
+        wait = _fmt_wait(_MAX_AGE_HOUR - (now - w.hour[0]))
+        return _MSGS[bucket].format(wait=wait)
 
     gap = {
         _PHOTO: settings.photo_min_gap_seconds,
@@ -158,8 +164,8 @@ def check(chat_id: str, bucket: str, is_super: bool = False) -> str | None:
         _APPLY: settings.apply_min_gap_seconds,
     }[bucket]
     if gap and now - w.last_action < gap:
-        mins, plural = _fmt_wait(gap - (now - w.last_action))
-        return _MSGS[bucket].format(mins=mins, s=plural)
+        wait = _fmt_wait(gap - (now - w.last_action))
+        return _MSGS[bucket].format(wait=wait)
 
     w.hour.append(now)
     w.day.append(now)
@@ -168,8 +174,9 @@ def check(chat_id: str, bucket: str, is_super: bool = False) -> str | None:
 
 
 def record_photo_failure(chat_id: str) -> None:
-    """Count a failed photo extraction toward the backoff limit (super users
-    still get backoff: it signals a real extraction problem, not abuse)."""
+    """Count a failed photo extraction toward the backoff limit (it signals a
+    real extraction problem, not abuse). Super users bypass the whole check()
+    — the recorded window simply never blocks them."""
     w = _window_for(chat_id, _PHOTO)
     now = time.time()
     w.photo_fails.append(now)

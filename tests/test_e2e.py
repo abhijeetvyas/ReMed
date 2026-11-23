@@ -7,6 +7,7 @@ import pytest
 
 from app import db, engine, handlers, scheduling
 from app.telegram import extract_event
+from app.config import settings
 
 NOW = datetime(2026, 1, 20, 1, 0, tzinfo=timezone.utc)  # 6:30 IST — day-0 slots still ahead
 
@@ -472,3 +473,171 @@ def test_edit_mixed_ops_and_clarify(tmp_db, tg, fixed_today, monkeypatch):
     state = json.loads(db.get_state(chat)["payload"])
     med = state["session"]["prescriptions"][0]["medicines"][0]
     assert med["duration_days"] == 5
+
+
+def test_edit_flow_shows_change_summary_not_full_table(tmp_db, tg, fixed_today, monkeypatch):
+    """/edit confirm step: the AI's one-line change summary (a separate output
+    value, "summary") is what the user sees — not the updated prescription."""
+    import asyncio
+    from app import changesets
+    monkeypatch.setattr(handlers, "_utcnow", lambda: NOW)
+    chat = "860"
+    session = changesets.draft_session(db.ensure_user(chat), [
+        {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
+         "slots": ["dinner"], "food": "after", "duration_days": 3},
+    ], NOW)
+    with db.tx() as conn:
+        changesets.apply_session(conn, chat, session, NOW)
+
+    async def fake_interpret(text, ctx):
+        return ({"operations": [{"op": "update_medicine", "target": "dolo",
+                                 "fields": {"duration_days": 5, "food": "before"}}],
+                 "summary": "Done — Dolo 650 is now 5 days, before food.",
+                 "clarify": None}, "fake-model")
+
+    monkeypatch.setattr(handlers, "interpret_edit", fake_interpret)
+    for uid, msg in ((1, "/edit"), (2, "Dolo is actually 5 days and before food")):
+        asyncio.run(handlers.handle_event(tg, extract_event(
+            {"update_id": uid, "message": {"chat": {"id": 860}, "text": msg}})))
+    confirm = tg.buttoned[-1][1]
+    assert confirm == "Done — Dolo 650 is now 5 days, before food."
+    assert "DOLO 650" not in confirm  # no full read-back
+    assert any(b["callback_data"] == "apply_edit" for row in tg.buttoned[-1][2] for b in row)
+
+    # Apply still persists the staged change
+    asyncio.run(handlers.handle_event(tg, extract_event({
+        "update_id": 3,
+        "callback_query": {"id": "cb11", "data": "apply_edit",
+                           "message": {"chat": {"id": 860}, "message_id": 1}, "from": {"id": 860}},
+    })))
+    rx_id = db.query_one("SELECT id FROM prescriptions WHERE chat_id=?", (chat,))["id"]
+    med = db.query_one("SELECT duration_days FROM medicines WHERE prescription_id=?", (rx_id,))
+    assert med["duration_days"] == 5
+
+
+def test_type_command_inline_creates_draft(tmp_db, tg, e2e, fixed_today, monkeypatch):
+    """/type with an inline description: typed-text extract (same medicines
+    JSON contract as the photo extract) → confirmable draft, logged as a
+    'type_extract' ai_call."""
+    import asyncio
+    monkeypatch.setattr(settings, "edit_min_gap_seconds", 0)
+
+    async def fake_type_extract(text):
+        return {"medicines": [
+            {"name": "Azithromycin 500", "form": "tablet", "tablets_per_dose": 1,
+             "slots": ["breakfast", "dinner"], "food": "before", "days": 5}], "notes": []}, "fake-model"
+
+    monkeypatch.setattr(handlers, "extract_text_prescription", fake_type_extract)
+    monkeypatch.setattr(handlers, "_utcnow", lambda: NOW)
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        {"update_id": 1, "message": {"chat": {"id": 861},
+                                     "text": "/type Azithromycin 500 before breakfast and dinner for 5 days"}})))
+    assert "📝 Got it" in tg.texts[0][1]
+    draft = tg.buttoned[0][1]
+    assert "💊 AZITHROMYCIN 500 — breakfast & dinner — before food — 5 days" in draft
+    assert "Does this look right?" in draft
+    assert db.get_state("861")["state"] == "pending_draft"
+    call = db.query("SELECT kind, ok FROM ai_calls WHERE chat_id='861'")
+    assert len(call) == 1 and call[0]["kind"] == "type_extract" and call[0]["ok"] == 1
+
+    # Apply via the draft buttons → real prescription
+    asyncio.run(handlers.handle_event(tg, extract_event(_callback_update(2, 861, "apply_draft"))))
+    assert "✅ All set" in tg.last_text()
+    assert len(db.active_prescriptions("861")) == 1
+
+
+def test_type_command_bare_prompt_then_next_message(tmp_db, tg, e2e, fixed_today, monkeypatch):
+    """Bare /type opens a typing session: onboarding copy + pending_type state;
+    the next free message is treated as the prescription description."""
+    import asyncio
+    monkeypatch.setattr(settings, "edit_min_gap_seconds", 0)
+
+    async def fake_type_extract(text):
+        return {"medicines": [
+            {"name": "Cetirizine syrup", "form": "syrup", "tablets_per_dose": 1,
+             "slots": ["breakfast"], "food": "after", "days": 5}], "notes": []}, "fake-model"
+
+    monkeypatch.setattr(handlers, "extract_text_prescription", fake_type_extract)
+    monkeypatch.setattr(handlers, "_utcnow", lambda: NOW)
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        {"update_id": 1, "message": {"chat": {"id": 862}, "text": "/type"}})))
+    assert any("Cetirizine" in t for _, t in tg.texts if "type" in t.lower() or "example" in t.lower())
+    assert db.get_state("862")["state"] == "pending_type"
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        {"update_id": 2, "message": {"chat": {"id": 862}, "text": "cetirizine syrup"}})))
+    draft = tg.buttoned[0][1]
+    assert "CETIRIZINE SYRUP" in draft
+    assert db.get_state("862")["state"] == "pending_draft"
+
+
+def test_type_command_rate_limited_and_budget_gated(tmp_db, tg, e2e, fixed_today, monkeypatch):
+    """/type spends an AI call: the edit bucket + the global daily budget
+    short-circuit before any spend."""
+    import asyncio
+    from app.config import settings as s
+    monkeypatch.setattr(s, "edit_rate_per_hour", 1)
+    monkeypatch.setattr(s, "edit_rate_per_day", 24)
+    monkeypatch.setattr(s, "edit_min_gap_seconds", 0)
+
+    async def boom(text):
+        raise AssertionError("AI must not be called when rate-limited")
+
+    monkeypatch.setattr(handlers, "extract_text_prescription", boom)
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        {"update_id": 1, "message": {"chat": {"id": 863},
+                                     "text": "/type Azithromycin 500 morning 5 days"}})))
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        {"update_id": 2, "message": {"chat": {"id": 863},
+                                     "text": "/type Dolo 650 morning 3 days"}})))
+    assert any("lot of edits" in t for _, t in tg.texts)  # 2nd /type blocked before any spend
+    # the one accepted attempt went through (and logged its failure); the
+    # blocked one never reached the extractor or the ai_calls log
+    calls = db.query("SELECT kind, ok FROM ai_calls WHERE chat_id='863'")
+    assert len(calls) == 1 and calls[0]["kind"] == "type_extract" and calls[0]["ok"] == 0
+
+
+def test_old_database_check_constraints_are_relaxed(tmp_path):
+    """A database created before 'pending_type' / 'type_extract' gains them via
+    a startup table rebuild (SQLite can't ALTER a CHECK constraint); existing
+    rows survive the rebuild."""
+    import sqlite3 as sq3
+
+    old_db = tmp_path / "old.db"
+    conn = sq3.connect(old_db)
+    conn.executescript("""
+        CREATE TABLE conversation_state(
+          chat_id TEXT PRIMARY KEY,
+          state TEXT NOT NULL CHECK(state IN ('pending_draft','pending_edit','pending_delete')),
+          payload TEXT,
+          expires_at TEXT NOT NULL
+        );
+        CREATE TABLE ai_calls(
+          id TEXT PRIMARY KEY,
+          chat_id TEXT,
+          kind TEXT NOT NULL CHECK(kind IN ('extract','interpret')),
+          model TEXT, input_text TEXT, input_image BLOB, output TEXT,
+          ok INTEGER NOT NULL, error TEXT, latency_ms INTEGER,
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_calls_chat ON ai_calls(chat_id, created_at);
+        INSERT INTO conversation_state VALUES('500', 'pending_edit', '{}', '2026-01-01T00:00:00+00:00');
+        INSERT INTO ai_calls VALUES('a', '500', 'interpret', 'm', 'q', NULL, 'o', 1, NULL, 1,
+                                    '2026-01-01T00:00:00+00:00');
+    """)
+    conn.commit()
+    conn.close()
+
+    from app import db
+    db.init(str(old_db))
+    # old rows survived the rebuild…
+    assert db.query_one("SELECT state FROM conversation_state WHERE chat_id='500'")["state"] == "pending_edit"
+    assert db.query_one("SELECT kind FROM ai_calls WHERE id='a'")["kind"] == "interpret"
+    # …and the new values are accepted
+    db.set_state("500", "pending_type", {})
+    assert db.get_state("500")["state"] == "pending_type"
+    db.log_ai_call("500", "type_extract", model="m", input_text="t", output="{}", ok=True)
+    assert db.query_one("SELECT kind FROM ai_calls WHERE kind='type_extract'")
+    # golden-set index survived the rebuild
+    idx = db.query_one("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_ai_calls_chat'")
+    assert idx is not None
+    db.close()

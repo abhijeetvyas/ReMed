@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime, timezone
 
 from . import changesets, db, guardrails, images, rendering, scheduling
-from .ai import AIError, extract_prescription, interpret_edit
+from .ai import AIError, extract_prescription, extract_text_prescription, interpret_edit
 from .config import settings  # noqa: F401
 from .scheduling import ValidationError
 from .telegram import Telegram, TelegramError, download_photo
@@ -136,6 +136,27 @@ def _redirect_edit(text: str) -> bool:
     return t == "/edit" or "edit prescription" in t
 
 
+async def _call_type_extract_logged(chat_id: str, text: str) -> dict:
+    """type-extract ③ (typed prescription description, same JSON contract as
+    the photo extract) with request + output persisted to ai_calls."""
+    import time
+    t0 = time.perf_counter()
+    try:
+        out, model = await extract_text_prescription(text)
+        db.log_ai_call(chat_id, "type_extract", model=model,
+                       input_text=text,
+                       output=json.dumps(out), ok=True,
+                       latency_ms=int((time.perf_counter() - t0) * 1000))
+        return out
+    except Exception as e:
+        db.log_ai_call(chat_id, "type_extract",
+                       model=settings.ai_models[0] if settings.ai_models else None,
+                       input_text=text,
+                       ok=False, error=f"{type(e).__name__}: {e}",
+                       latency_ms=int((time.perf_counter() - t0) * 1000))
+        raise
+
+
 # ---------------------------------------------------------------- text & commands
 
 async def _handle_text(tg: Telegram, chat_id: str, text: str) -> None:
@@ -148,6 +169,12 @@ async def _handle_text(tg: Telegram, chat_id: str, text: str) -> None:
     # typed YES gate for /delete
     if state and state["state"] == "pending_delete":
         await _handle_delete_confirm(tg, chat_id, text)
+        return
+
+    # bare "/type" → the next free message is the prescription description
+    if state and state["state"] == "pending_type":
+        db.clear_state(chat_id)
+        await _intake_text(tg, chat_id, text)
         return
 
     if _redirect_edit(text):
@@ -178,6 +205,22 @@ async def _handle_command(tg: Telegram, chat_id: str, text: str) -> None:
     elif cmd == "/today":
         rows = scheduling.todays_remaining(chat_id, _utcnow())
         await tg.send_text(chat_id, rendering.today_message(rows, tz))
+    elif cmd == "/type":
+        # AI-intake like a photo: same guardrail bucket + global budget before
+        # any spend
+        blocked = guardrails.check(chat_id, "edit", _is_super(chat_id)) or \
+            guardrails.ai_capacity_block()
+        if blocked:
+            await _guard_fail(tg, chat_id, blocked)
+            return
+        arg = arg.strip()
+        if arg:
+            await _intake_text(tg, chat_id, arg)
+        else:
+            # no description inline: open a typing session — the next free
+            # message is treated as the prescription description
+            db.set_state(chat_id, "pending_type", {})
+            await tg.send_text(chat_id, rendering.TYPE_ONBOARDING)
     elif cmd == "/edit":
         await _start_edit(tg, chat_id)
     elif cmd == "/prescriptions":
@@ -303,6 +346,33 @@ async def _intake_photo(tg: Telegram, chat_id: str, file_id: str) -> None:
     await tg.send_message_with_buttons(chat_id, rendering.draft_message(session, duplicates), DRAFT_BUTTONS)
 
 
+# ---------------------------------------------------------------- Flow 1c — typed-text intake (/type)
+
+async def _intake_text(tg: Telegram, chat_id: str, text: str) -> None:
+    """'/type' intake: the user described the prescription in words. Same
+    draft flow as the photo path (confirm gate, duplicates check, Apply) —
+    only the extractor differs."""
+    await tg.send_text(chat_id, "📝 Got it. Setting up your prescription…")
+    try:
+        raw = await _call_type_extract_logged(chat_id, text)
+        medicines = scheduling.validate_draft_medicines(raw.get("medicines", []))
+    except Exception as e:
+        # same contract as photo intake: any post-ack failure answers with the
+        # generic failure voice, never silence
+        log.warning("type-intake failed (no contents logged): %s: %s", type(e).__name__, e)
+        medicines = None
+
+    if not medicines:
+        await tg.send_text(chat_id, rendering.GENERIC_FAILURE)
+        return
+
+    user = db.get_user(chat_id)
+    session = changesets.draft_session(user, medicines, _utcnow())
+    db.set_state(chat_id, "pending_draft", {"session": session})
+    duplicates = changesets.duplicate_medicine_names(chat_id, session)
+    await tg.send_message_with_buttons(chat_id, rendering.draft_message(session, duplicates), DRAFT_BUTTONS)
+
+
 # ---------------------------------------------------------------- Flow 5 — edit sessions
 
 def _context_for(session: dict) -> dict:
@@ -367,7 +437,12 @@ async def _handle_edit_text(tg: Telegram, chat_id: str, text: str) -> None:
 
     draft_mode = session["type"] == "draft"
     db.set_state(chat_id, "pending_edit", {"session": session})
-    await tg.send_message_with_buttons(chat_id, rendering.edit_confirm_message(session),
+    # the AI's own one-line change summary is the confirmation surface — the
+    # full updated table only appears when the model didn't produce one
+    # (older model / fallback path), falling back to the read-back rendering
+    summary = str(result.get("summary") or "").strip()
+    confirm_text = summary if summary else rendering.edit_confirm_message(session)
+    await tg.send_message_with_buttons(chat_id, confirm_text,
                                        DRAFT_BUTTONS if draft_mode else EDIT_BUTTONS)
     if clarify:  # mixed request: clear parts applied, now ask about the rest
         await tg.send_text(chat_id, str(clarify))

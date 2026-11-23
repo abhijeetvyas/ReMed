@@ -1,6 +1,7 @@
-"""AI layer — exactly two call types (deep dive §4). The AI only PROPOSES:
-it returns JSON contracts; ordinary code validates, and nothing reaches live
-data without the user's explicit Apply.
+"""AI layer — three call types (deep dive §4): photo extract, typed-text
+extract, edit interpret. The AI only PROPOSES: it returns JSON contracts;
+ordinary code validates, and nothing reaches live data without the user's
+explicit Apply.
 """
 import base64
 import json
@@ -40,6 +41,10 @@ def _edit_context_block(ctx: dict) -> str:
 
 def interpret_prompt() -> str:
     return load_prompt("interpret_edit.md")
+
+
+def type_extract_prompt() -> str:
+    return load_prompt("type_extract.md")
 
 
 class AIError(Exception):
@@ -162,4 +167,17 @@ async def interpret_edit(user_text: str, current_context: dict) -> tuple[dict, s
         raise AIError("AI provider not configured")
     client = AIClient()
     prompt = interpret_prompt() + _edit_context_block(current_context) + "\n\nUSER REQUEST:\n" + user_text
+    return await client.complete_json_chain(prompt, prompt)
+
+
+# ---------------------------------------------------------------- ③ Extract from typed text
+
+async def extract_text_prescription(user_text: str) -> tuple[dict, str]:
+    """Typed prescription description → (medicines JSON, model_used). Same
+    JSON contract as extract_prescription (the photo path); only the input
+    differs. Raises AIError if the whole chain fails."""
+    if not settings.ai_configured:
+        raise AIError("AI provider not configured")
+    client = AIClient()
+    prompt = type_extract_prompt() + user_text
     return await client.complete_json_chain(prompt, prompt)

@@ -1,5 +1,6 @@
 """SQLite layer — 6 data tables (+ meta, ai_calls, user_messages logs), plain SQL. Times stored as UTC ISO-8601 strings."""
 import json
+import logging
 import sqlite3
 import threading
 import uuid
@@ -8,8 +9,46 @@ from datetime import datetime, timezone
 
 from .config import settings
 
+log = logging.getLogger("remed.db")
+
 _conn: sqlite3.Connection | None = None
 _lock = threading.Lock()
+
+# The two CHECK-constrained tables below also carry their indexes in these DDL
+# constants: _rebuild_constraint_tables() re-creates them when an old database
+# needs the CHECK relaxed, and a DROPped table's indexes go with it.
+CONVERSATION_STATE_DDL = """
+CREATE TABLE IF NOT EXISTS conversation_state(
+  chat_id TEXT PRIMARY KEY,
+  state TEXT NOT NULL CHECK(state IN ('pending_draft','pending_edit','pending_delete','pending_type')),
+  payload TEXT,
+  expires_at TEXT NOT NULL
+);
+"""
+
+AI_CALLS_DDL = """
+CREATE TABLE IF NOT EXISTS ai_calls(
+  id TEXT PRIMARY KEY,
+  chat_id TEXT,                      -- null only if identity creation itself failed
+  kind TEXT NOT NULL CHECK(kind IN ('extract','interpret','type_extract')),
+  model TEXT,
+  input_text TEXT,                   -- interpret/type_extract: user text (+context); extract: null
+  input_image BLOB,                  -- extract: the photo bytes (kept for the golden set — privacy exception, see README)
+  output TEXT,                       -- raw model JSON, or null on failure
+  ok INTEGER NOT NULL,
+  error TEXT,
+  latency_ms INTEGER,
+  created_at TEXT NOT NULL
+);
+"""
+
+# Indexes are separate on purpose: SQLite renames a table's indexes with the
+# table, so the rebuild must re-run these only AFTER the old table is dropped
+# (CREATE INDEX IF NOT EXISTS otherwise sees the old names and skips).
+AI_CALLS_INDEX_DDL = """
+CREATE INDEX IF NOT EXISTS idx_ai_calls_chat ON ai_calls(chat_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_ai_calls_time ON ai_calls(created_at);  -- global daily-budget COUNT, index-only scan
+"""
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -80,30 +119,7 @@ CREATE TABLE IF NOT EXISTS reminder_queue(
   last_error TEXT
 );
 
-CREATE TABLE IF NOT EXISTS conversation_state(
-  chat_id TEXT PRIMARY KEY,
-  state TEXT NOT NULL CHECK(state IN ('pending_draft','pending_edit','pending_delete')),
-  payload TEXT,
-  expires_at TEXT NOT NULL
-);
-
--- AI observability (founder ask): every AI call ① extract / ② interpret, with
--- input, output and metadata, to build a golden dataset and tune prompts later.
-CREATE TABLE IF NOT EXISTS ai_calls(
-  id TEXT PRIMARY KEY,
-  chat_id TEXT,                      -- null only if identity creation itself failed
-  kind TEXT NOT NULL CHECK(kind IN ('extract','interpret')),
-  model TEXT,
-  input_text TEXT,                   -- interpret: user request + context; extract: null
-  input_image BLOB,                  -- extract: the photo bytes (kept for the golden set — privacy exception, see README)
-  output TEXT,                       -- raw model JSON, or null on failure
-  ok INTEGER NOT NULL,
-  error TEXT,
-  latency_ms INTEGER,
-  created_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_ai_calls_chat ON ai_calls(chat_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_ai_calls_time ON ai_calls(created_at);  -- global daily-budget COUNT, index-only scan
+"""+CONVERSATION_STATE_DDL+AI_CALLS_DDL+AI_CALLS_INDEX_DDL+"""
 
 -- Full inbound message log (founder ask): every command / free text / photo
 -- the user sends, for debugging and future model improvement.
@@ -175,6 +191,34 @@ def _migrate() -> None:
     # backfill internal ids for rows created before the column existed
     _conn.execute("UPDATE users SET id=? WHERE id IS NULL", (uuid.uuid4().hex,))
     _conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_id ON users(id)")
+    _rebuild_constraint_tables()
+
+
+def _rebuild_constraint_tables() -> None:
+    """Databases created before the newer CHECK values existed ('pending_type'
+    in conversation_state, 'type_extract' in ai_calls) reject writes using
+    them. SQLite can't ALTER a CHECK constraint: rebuild each affected table
+    (both are FK-free) and copy the rows. Only runs when the stored CREATE
+    TABLE sql predates the value, so it's a no-op on fresh databases and on
+    already-migrated ones."""
+    REBUILDS = (
+        ("conversation_state", "pending_type", CONVERSATION_STATE_DDL, ""),
+        ("ai_calls", "type_extract", AI_CALLS_DDL, AI_CALLS_INDEX_DDL),
+    )
+    for table, marker, ddl, index_ddl in REBUILDS:
+        row = _conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+        if row is None or marker in row[0]:
+            continue  # not created yet (SCHEMA handles it) or already relaxed
+        log.warning("relaxing CHECK constraint on %s (table rebuild)", table)
+        _conn.execute(f"ALTER TABLE {table} RENAME TO {table}_old")
+        _conn.executescript(ddl)
+        _conn.execute(f"INSERT INTO {table} SELECT * FROM {table}_old")
+        _conn.execute(f"DROP TABLE {table}_old")
+        # after the drop: the old table's indexes died with it, so these land
+        # on the rebuilt table instead of being skipped as existing names
+        if index_ddl:
+            _conn.executescript(index_ddl)
 
 
 def get_conn() -> sqlite3.Connection:

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AppsForLife — small apps for everyday problems</title>
+  <meta name="description" content="AppsForLife builds small, focused apps and tools that solve day-to-day problems. First up: ReMed — medicine reminders on Telegram." />
+  <meta property="og:title" content="AppsForLife — small apps for everyday problems" />
+  <meta property="og:description" content="We build small, focused apps and tools that solve day-to-day problems. First up: ReMed — reminders for medicines, on Telegram." />
+  <meta property="og:url" content="https://appsforlife.app/" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111112'/%3E%3Ctext x='16' y='22' font-family='Georgia,serif' font-size='17' font-style='italic' fill='%23fff' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    /* ReMed theme — light, editorial (black & white; the accent stays ink) */
+    :root {
+      --bg: #ffffff;
+      --bg-2: #fafafa;
+      --surface-2: #f4f4f5;
+      --border: #e9e9ea;
+      --border-2: #dcdcdd;
+      --ink: #111112;
+      --muted: #5f6065;
+      --dim: #9b9ca1;
+      --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+      --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+    ::selection { background: #111112; color: #fff; }
+    .container { width: min(760px, calc(100% - 48px)); margin-inline: auto; }
+    a { color: inherit; text-decoration: none; }
+
+    /* header */
+    header { padding: 28px 0; }
+    .wordmark { font-family: var(--serif); font-style: italic; font-size: 1.15rem; font-weight: 500; letter-spacing: -0.01em; }
+
+    /* hero */
+    .hero { padding: 72px 0 64px; }
+    .eyebrow {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.2em;
+      color: var(--ink);
+      margin-bottom: 18px;
+    }
+    .eyebrow::before {
+      content: "";
+      display: inline-block;
+      width: 22px; height: 1px;
+      background: var(--ink);
+      vertical-align: middle;
+      margin-right: 10px;
+      transform: translateY(-3px);
+    }
+    h1 {
+      font-family: var(--serif);
+      font-weight: 500;
+      font-size: clamp(2.1rem, 5.5vw, 3.2rem);
+      line-height: 1.15;
+      letter-spacing: -0.015em;
+    }
+    h1 em { font-style: italic; }
+    .sub { color: var(--muted); font-size: 1.05rem; margin-top: 20px; max-width: 32em; }
+
+    /* apps */
+    .apps { padding: 40px 0 88px; }
+    .apps-grid {
+      margin-top: 28px;
+      display: grid;
+      gap: 14px;
+    }
+    .app-card {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 20px 22px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: var(--bg);
+      transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    a.app-card:hover {
+      border-color: var(--ink);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(17, 17, 18, 0.07);
+    }
+    .app-ico { font-size: 1.5rem; line-height: 1; }
+    .app-body { flex: 1; min-width: 0; }
+    .app-name { font-weight: 600; }
+    .app-tag { color: var(--muted); font-size: 0.9rem; }
+    .app-arrow { color: var(--dim); font-weight: 500; }
+    .app-soon {
+      padding: 20px 22px;
+      border: 1px dashed var(--border-2);
+      border-radius: 14px;
+      background: var(--bg-2);
+      color: var(--dim);
+      font-size: 0.9rem;
+    }
+
+    /* footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 26px 0 34px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      color: var(--dim);
+      font-size: 0.85rem;
+    }
+    footer a:hover { color: var(--ink); }
+
+    @media (max-width: 560px) {
+      .hero { padding: 48px 0 40px; }
+      .app-card, .app-soon { padding: 16px 18px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="container">
+      <a class="wordmark" href="./">AppsForLife</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <p class="eyebrow">AppsForLife</p>
+        <h1>Small apps and tools<br />for <em>everyday</em> problems.</h1>
+        <p class="sub">
+          We build focused, no-fuss apps that take care of one day-to-day
+          problem at a time — and stay out of your way.
+        </p>
+      </div>
+    </section>
+
+    <section class="apps">
+      <div class="container">
+        <p class="eyebrow">Our apps</p>
+        <div class="apps-grid">
+          <a class="app-card" href="https://remed.appsforlife.app">
+            <span class="app-ico" aria-hidden="true">💊</span>
+            <span class="app-body">
+              <div class="app-name">ReMed</div>
+              <div class="app-tag">Send a photo of your prescription — never miss a dose. Reminders for medicines, on Telegram.</div>
+            </span>
+            <span class="app-arrow" aria-hidden="true">→</span>
+          </a>
+          <div class="app-soon">More apps are on the way.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container" style="display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+      <span>© <span id="year">2026</span> AppsForLife</span>
+      <a href="https://remed.appsforlife.app">ReMed</a>
+    </div>
+  </footer>
+
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+</body>
+</html>

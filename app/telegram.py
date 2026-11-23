@@ -110,13 +110,14 @@ def extract_event(update: dict) -> dict | None:
 
 async def download_photo(token: str, file_id: str) -> bytes:
     base = f"https://api.telegram.org/bot{token}"
+    file_base = f"https://api.telegram.org/file/bot{token}"  # Telegram serves files at /file/bot<token>/<path>
     max_bytes = settings.max_image_mb * 1024 * 1024
     async with httpx.AsyncClient(timeout=30) as client:
         meta = (await client.get(f"{base}/getFile", params={"file_id": file_id})).json()
         if not meta.get("ok"):
             raise TelegramError("getFile failed")
         path = meta["result"]["file_path"]
-        resp = await client.get(f"{base}/file/{path}")
+        resp = await client.get(f"{file_base}/{path}")
         if resp.status_code >= 400:
             raise TelegramError(f"file download failed: HTTP {resp.status_code}")
         if len(resp.content) > max_bytes:

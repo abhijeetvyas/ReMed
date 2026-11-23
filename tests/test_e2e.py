@@ -641,3 +641,44 @@ def test_old_database_check_constraints_are_relaxed(tmp_path):
     idx = db.query_one("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_ai_calls_chat'")
     assert idx is not None
     db.close()
+
+
+def test_prescription_numbering_and_cancel_by_number(tmp_db, tg, e2e, fixed_today, monkeypatch):
+    """Founder rules: every prescription gets a stable per-user number (#1, #2
+    …), numbers show in /prescriptions and cancel labels, /cancel <n> targets
+    by number, and bare /cancel assumes the LATEST prescription."""
+    import asyncio
+    import re as _re
+    monkeypatch.setattr(settings, "photo_min_gap_seconds", 0)
+    monkeypatch.setattr(settings, "apply_min_gap_seconds", 0)
+    monkeypatch.setattr(handlers, "_utcnow", lambda: NOW)
+    chat = "870"
+
+    for uid in (1, 2, 3):
+        asyncio.run(handlers.handle_event(tg, extract_event(
+            {"update_id": uid, "message": {"chat": {"id": 870},
+                                           "photo": [{"file_id": "f", "width": 1, "height": 1}]}})))
+        asyncio.run(handlers.handle_event(tg, extract_event(
+            _callback_update(100 + uid, 870, "apply_draft"))))
+    numbers = [r["rx_number"] for r in db.query(
+        "SELECT rx_number FROM prescriptions WHERE chat_id='870' ORDER BY created_at")]
+    assert numbers == [1, 2, 3]
+
+    # numbers visible in /prescriptions
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        {"update_id": 200, "message": {"chat": {"id": 870}, "text": "/prescriptions"}})))
+    listing = tg.texts[-1][1]
+    assert "#1" in listing and "#2" in listing and "#3" in listing
+
+    # /cancel 2 targets by number
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        {"update_id": 201, "message": {"chat": {"id": 870}, "text": "/cancel 2"}})))
+    assert any("#2" in t and "Cancelled" in t for _, t in tg.texts)
+    assert len(db.active_prescriptions(chat)) == 2
+
+    # bare /cancel: founder default = latest active (#3)
+    asyncio.run(handlers.handle_event(tg, extract_event(
+        {"update_id": 202, "message": {"chat": {"id": 870}, "text": "/cancel"}})))
+    assert any("#3" in t and "Cancelled" in t for _, t in tg.texts)
+    assert len(db.active_prescriptions(chat)) == 1
+    assert _re.search(r"Cancelled[^\n]*#3", tg.texts[-1][1])

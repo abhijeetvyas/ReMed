@@ -134,3 +134,45 @@ def test_cancel_prescription_by_medicine_name(tmp_db, fixed_today):
     assert db.query_one(
         "SELECT COUNT(*) c FROM dose_events de JOIN medicines m ON m.id=de.medicine_id"
         " WHERE m.prescription_id=? AND de.status='pending'", (pid,))["c"] == 0
+
+
+def test_cancel_prescription_by_number(tmp_db, fixed_today):
+    session, _ = _live_session(tmp_db)
+    number = session["prescriptions"][0]["number"]
+    assert number == 1  # live_context_json exposes the stable rx number
+    changesets.apply_operations(session, [{"op": "cancel_prescription", "target": "1"}])
+    assert session["prescriptions"][0]["status"] == "cancelled"
+
+
+def test_add_without_hint_lands_on_latest(tmp_db, fixed_today):
+    """Founder default: an add with no target goes to the LATEST active
+    prescription (highest number) instead of silently starting a new one."""
+    session, pid1 = _live_session(tmp_db)
+    new_rx = changesets.draft_session(db.get_user("111"), [
+        {"name": "Azithro 500", "form": "tablet", "tablets_per_dose": 1,
+         "slots": ["dinner"], "food": "after", "duration_days": 5},
+    ], NOW)
+    with db.tx() as conn:
+        pid2 = changesets.apply_session(conn, "111", new_rx, NOW)[0]["prescription_id"]
+    session = changesets.live_session("111")
+    assert [rx["number"] for rx in session["prescriptions"]] == [1, 2]
+    changesets.apply_operations(session, [{"op": "add_medicine", "fields": {
+        "name": "Cetirizine", "form": "tablet", "tablets_per_dose": 1,
+        "slots": ["breakfast"], "food": "after", "days": 5}}])
+    latest_meds = [m["name"] for rx in session["prescriptions"]
+                   if rx["id"] == pid2 or rx.get("number") == 2 for m in rx["medicines"]]
+    assert "Cetirizine" in latest_meds
+
+
+def test_rx_numbers_assigned_sequentially(tmp_db, fixed_today):
+    db.ensure_user("150")
+    for i in range(3):
+        session = changesets.draft_session(db.get_user("150"), [
+            {"name": f"Med {i}", "form": "tablet", "tablets_per_dose": 1,
+             "slots": ["breakfast"], "food": "after", "duration_days": 2},
+        ], NOW)
+        with db.tx() as conn:
+            changesets.apply_session(conn, "150", session, NOW)
+    nums = [r["rx_number"] for r in db.query(
+        "SELECT rx_number FROM prescriptions WHERE chat_id='150' ORDER BY created_at")]
+    assert nums == [1, 2, 3]

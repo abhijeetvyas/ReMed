@@ -541,28 +541,41 @@ async def _handle_cancel(tg: Telegram, chat_id: str, arg: str) -> None:
 
     def _meds_label(rx) -> str:
         names = [m["name"] for m in db.medicines_for(rx["id"])]
-        return f"{rendering.fmt_local_date(rx['start_date'])} → {rendering.fmt_local_date(rx['end_date'])} · " + \
+        num = f"#{rx['rx_number']} · " if rx["rx_number"] else ""
+        return f"{num}{rendering.fmt_local_date(rx['start_date'])} → {rendering.fmt_local_date(rx['end_date'])} · " + \
                (", ".join(names[:3]) + ("…" if len(names) > 3 else "") if names else "empty")
 
     active = db.active_prescriptions(chat_id)
     if not active:
         await tg.send_text(chat_id, "No active prescriptions to cancel.")
         return
-    chosen = active
     if arg:
         t = arg.lower()
-        chosen = [rx for rx in active if any(t in m["name"].lower() for m in db.medicines_for(rx["id"]))]
-        if not chosen:
-            await tg.send_text(chat_id, f"I couldn't find a prescription containing '{arg}'. "
-                                        "Use /edit if you want to change one instead.")
-            return
+        # numbered reference: /cancel 2 (or #2) — the stable rx number
+        if t.lstrip("#").isdigit():
+            n = int(t.lstrip("#"))
+            chosen = [rx for rx in active if rx["rx_number"] == n]
+            if not chosen:
+                await tg.send_text(chat_id, f"I couldn't find an active prescription #{n}. "
+                                            "Check /prescriptions for the numbers.")
+                return
+        else:
+            chosen = [rx for rx in active if any(t in m["name"].lower() for m in db.medicines_for(rx["id"]))]
+            if not chosen:
+                await tg.send_text(chat_id, f"I couldn't find a prescription containing '{arg}'. "
+                                            "Use /edit if you want to change one instead.")
+                return
+    else:
+        # no target specified: the founder default is the LATEST prescription
+        # (highest number); /prescriptions shows the numbers
+        chosen = [max(active, key=lambda rx: rx["rx_number"] or 0)]
     if len(chosen) == 1:
         rx = chosen[0]
         with db.tx() as conn:
             _cancel_in_db(conn, rx["id"])
         await tg.send_text(chat_id, f"🚫 Cancelled — {_meds_label(rx)}. Its future reminders are removed.")
         return
-    # ambiguous / no arg → picker
+    # name matched several → picker (numbers shown for unambiguous reference)
     rows = [[("🚫 " + _meds_label(rx), f"cancelrx:{rx['id']}")] for rx in chosen]
     await tg.send_message_with_buttons(chat_id, "Which prescription should I cancel?", rows)
 

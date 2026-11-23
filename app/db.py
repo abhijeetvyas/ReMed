@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS users(
 CREATE TABLE IF NOT EXISTS prescriptions(
   id TEXT PRIMARY KEY,
   chat_id TEXT NOT NULL REFERENCES users(chat_id),
+  rx_number INTEGER,                 -- stable per-user number (#1, #2 …), assigned at creation; user-facing reference
   start_date TEXT NOT NULL,
   end_date TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('draft','active','cancelled','expired')),
@@ -180,6 +181,7 @@ def _migrate() -> None:
         "ALTER TABLE users ADD COLUMN phone TEXT",
         "ALTER TABLE users ADD COLUMN email TEXT",
         "ALTER TABLE prescriptions ADD COLUMN paused INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE prescriptions ADD COLUMN rx_number INTEGER",
         "ALTER TABLE users ADD COLUMN is_super INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE users ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0",
     )
@@ -191,7 +193,21 @@ def _migrate() -> None:
     # backfill internal ids for rows created before the column existed
     _conn.execute("UPDATE users SET id=? WHERE id IS NULL", (uuid.uuid4().hex,))
     _conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_id ON users(id)")
+    _backfill_rx_numbers()
     _rebuild_constraint_tables()
+
+
+def _backfill_rx_numbers() -> None:
+    """Prescriptions created before rx_number existed get their stable per-user
+    number now (1-based per chat in creation order). Idempotent: only NULLs are
+    touched, and new inserts feed MAX(rx_number)+1 — the same sequence."""
+    _conn.execute(
+        "UPDATE prescriptions SET rx_number=("
+        "  SELECT COUNT(*) FROM prescriptions p2"
+        "  WHERE p2.chat_id = prescriptions.chat_id"
+        "    AND (p2.created_at < prescriptions.created_at"
+        "         OR (p2.created_at = prescriptions.created_at AND p2.id <= prescriptions.id)))"
+        "WHERE rx_number IS NULL")
 
 
 def _rebuild_constraint_tables() -> None:
@@ -329,6 +345,14 @@ def active_prescriptions(chat_id: str) -> list[sqlite3.Row]:
     return prescriptions_for(chat_id, ("active",))
 
 
+def next_rx_number(conn, chat_id: str) -> int:
+    """Stable per-user prescription number (#1, #2 …). Called inside the apply
+    transaction; runs past number NULLs (fresh backfill edge)."""
+    row = conn.execute(
+        "SELECT MAX(rx_number) FROM prescriptions WHERE chat_id=?", (chat_id,)).fetchone()
+    return 1 if row is None or row[0] is None else row[0] + 1
+
+
 def medicines_for(prescription_id: str, include_removed: bool = False) -> list[sqlite3.Row]:
     sql = "SELECT * FROM medicines WHERE prescription_id=?"
     if not include_removed:
@@ -355,7 +379,8 @@ def live_context_json(chat_id: str) -> dict:
         ]
         if meds:
             ctx["prescriptions"].append(
-                {"id": rx["id"], "start_date": rx["start_date"], "end_date": rx["end_date"], "medicines": meds}
+                {"id": rx["id"], "number": rx["rx_number"], "start_date": rx["start_date"],
+                 "end_date": rx["end_date"], "medicines": meds}
             )
     return ctx
 

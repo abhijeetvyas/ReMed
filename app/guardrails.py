@@ -7,9 +7,9 @@ call, every /type description a paid text-extract call. This module adds
 cheap, realistic guardrails:
 
 1. Per-chat sliding-window rate limits, per action bucket (photo / edit /
-   apply): hourly (default: a sixth of the daily cap) + daily caps, plus a
-   minimum gap (cooldown) between consecutive actions — throttles bursts
-   without touching a genuine user's flow.
+   apply): hourly + daily caps (hourly default 24 for now), plus a minimum
+   gap between consecutive actions — 30s on the heavy AI/image buckets, 5s
+   on the cheap apply mutation (founder policy).
 2. Photo-failure backoff — repeated unreadable photos stop spending AI calls
    and stop persisting blobs after a few failures in the window.
 3. Super users — a chat verified against the SUPER_USER_KEY secret (via the

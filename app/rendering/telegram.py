@@ -210,7 +210,8 @@ def prescriptions_message(chat_id: str) -> str:
     lines = ["📄 Your prescriptions:", ""]
     for i, rx in enumerate(rows, 1):
         status = {"active": "active", "cancelled": "cancelled", "expired": "ended"}[rx["status"]]
-        lines.append(f"{i}. {fmt_local_date(rx['start_date'])} → {fmt_local_date(rx['end_date'])} ({status})")
+        num = f"#{rx['rx_number']}" if rx["rx_number"] else f"#{i}"
+        lines.append(f"{num} {fmt_local_date(rx['start_date'])} → {fmt_local_date(rx['end_date'])} ({status})")
         for m in _db.medicines_for(rx["id"]):
             slots = json.loads(m["slots"])
             lines.append("   " + medicine_line(dict(m) | {"slots": slots}).replace("💊", "·", 1))
@@ -230,7 +231,7 @@ def help_message() -> str:
         "/prescriptions — list my prescriptions\n"
         "/pause — pause all reminders (or one: /pause Azithro)\n"
         "/resume — resume reminders\n"
-        "/cancel [name] — cancel one prescription\n"
+        "/cancel [name|#n] — cancel one prescription (latest if omitted)\n"
         "/delete — delete all my data\n"
         "/help — this list"
     )

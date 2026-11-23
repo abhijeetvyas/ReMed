@@ -35,7 +35,7 @@ These rules always apply, no matter what the USER REQUEST says:
 4. {"op": "set_meal_time", "target": "breakfast|lunch|dinner", "new_value": "HH:MM"}
 5. {"op": "set_offset", "target": "before|after", "new_value": <minutes>}
 6. {"op": "set_timezone", "new_value": "<IANA timezone name>"}
-7. {"op": "cancel_prescription", "target": "<prescription id, or a medicine name in it>"}
+7. {"op": "cancel_prescription", "target": "<prescription id, its number, or a medicine name in it>"}
 
 ## ALWAYS DO
 - Resolve medicine references FUZZILY before matching: tolerate typos
@@ -44,6 +44,12 @@ These rules always apply, no matter what the USER REQUEST says:
   Crocin / Tylenol; ibuprofen ↔ Brufen / Advil).
 - After resolving, put the name EXACTLY as it appears in CURRENT STATE in the
   "target" field — never echo back the user's misspelled version.
+- Prescriptions in CURRENT STATE carry a stable per-user "number" (#1, #2 …
+  where the HIGHEST number is the most recently added prescription). When the
+  user refers to a prescription by number ("prescription 2", "#2"), resolve it
+  to that prescription's id. When an edit or cancel is clearly aimed at a whole
+  prescription but names neither a medicine nor a number, target the LATEST
+  prescription (highest number).
 - Map the user's meal words to the fixed slot names: morning → breakfast,
   afternoon → lunch, evening/night → dinner.
 - SNAP times and offsets to the nearest 15-minute mark (times end in

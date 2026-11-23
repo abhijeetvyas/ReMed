@@ -180,11 +180,13 @@ def validate_operation(session: dict, op: dict, now_utc: datetime | None = None)
         session["user_changed"] = True
     elif kind == "cancel_prescription":
         t = _norm(op.get("target", ""))
+        # a bare number user reference: "cancel prescription 2" / "#2"
+        number = int(op.get("target")) if str(op.get("target", "")).strip().isdigit() else None
         hits = []
         for rx in session["prescriptions"]:
             if rx.get("status") == "cancelled":
                 continue
-            if rx["id"] == op.get("target", "") or any(
+            if rx["id"] == op.get("target", "") or rx.get("number") == number or any(
                 not m.get("removed") and (t in _norm(m["name"]) or (len(_norm(m["name"])) >= 4 and _norm(m["name"]) in t))
                 for m in rx["medicines"]
             ):
@@ -200,7 +202,9 @@ def validate_operation(session: dict, op: dict, now_utc: datetime | None = None)
 
 
 def _resolve_prescription(session: dict, hint: str | None, now_utc: datetime | None = None) -> dict:
-    """Which prescription does add_medicine belong to?"""
+    """Which prescription does add_medicine belong to? Falls back to the LATEST
+    active prescription (highest number) — the founder's default when the user
+    doesn't say which one; 'new' stays an explicit ask only."""
     active = [rx for rx in session["prescriptions"] if rx.get("status") != "cancelled"]
     if hint:
         h = _norm(hint)
@@ -209,8 +213,8 @@ def _resolve_prescription(session: dict, hint: str | None, now_utc: datetime | N
         for rx in active:
             if rx["id"] == hint or any(not m.get("removed") and h in _norm(m["name"]) for m in rx["medicines"]):
                 return rx
-    if len(active) == 1:
-        return active[0]
+    if active:
+        return max(active, key=lambda rx: rx.get("number") or 0)
     return _new_prescription(session, now_utc)
 
 
@@ -284,10 +288,11 @@ def apply_session(conn, chat_id: str, session: dict, now_utc) -> list[dict]:
             continue
         if session["type"] == "draft":
             rx_id = str(uuid.uuid4())
+            rx_number = db.next_rx_number(conn, chat_id)  # stable user-facing reference (#1, #2 …)
             conn.execute(
-                "INSERT INTO prescriptions(id, chat_id, start_date, end_date, status, image_deleted, created_at)"
-                " VALUES(?,?,?,?, 'active', 1, ?)",
-                (rx_id, chat_id, rx["start_date"], rx["end_date"], db.now_iso()),
+                "INSERT INTO prescriptions(id, chat_id, rx_number, start_date, end_date, status, image_deleted, created_at)"
+                " VALUES(?,?,?,?,?,'active',1,?)",
+                (rx_id, chat_id, rx_number, rx["start_date"], rx["end_date"], db.now_iso()),
             )
             for m in rx["medicines"]:
                 if m.get("removed"):
@@ -300,7 +305,7 @@ def apply_session(conn, chat_id: str, session: dict, now_utc) -> list[dict]:
                      m["food"], m["duration_days"], db.now_iso()),
                 )
             db.log_activity(conn, chat_id, "prescription_created",
-                            {"prescription_id": rx_id,
+                            {"prescription_id": rx_id, "rx_number": rx_number,
                              "medicines": [m["name"] for m in rx["medicines"] if not m.get("removed")]})
             affected.append({"prescription_id": rx_id, "cancelled": False})
         else:  # live

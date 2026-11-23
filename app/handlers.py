@@ -343,11 +343,9 @@ async def _handle_edit_text(tg: Telegram, chat_id: str, text: str) -> None:
         result = await _call_interpret_logged(chat_id, text, _context_for(session))
         ops = result.get("operations") or []
         clarify = result.get("clarify")
-        if clarify:
-            await tg.send_text(chat_id, str(clarify))
-            return
+        # clarify no longer discards ops: clear parts apply, unclear part asks
         if not ops:
-            await tg.send_text(chat_id, rendering.EDIT_FAILURE)
+            await tg.send_text(chat_id, str(clarify) if clarify else rendering.EDIT_FAILURE)
             return
         changesets.apply_operations(session, ops, _utcnow())
     except changesets.Ambiguous as e:
@@ -371,6 +369,8 @@ async def _handle_edit_text(tg: Telegram, chat_id: str, text: str) -> None:
     db.set_state(chat_id, "pending_edit", {"session": session})
     await tg.send_message_with_buttons(chat_id, rendering.edit_confirm_message(session),
                                        DRAFT_BUTTONS if draft_mode else EDIT_BUTTONS)
+    if clarify:  # mixed request: clear parts applied, now ask about the rest
+        await tg.send_text(chat_id, str(clarify))
 
 
 async def _handle_stray_text(tg: Telegram, chat_id: str, text: str) -> None:
@@ -384,11 +384,8 @@ async def _handle_stray_text(tg: Telegram, chat_id: str, text: str) -> None:
         result = await _call_interpret_logged(chat_id, text, _context_for(session))
         ops = result.get("operations") or []
         clarify = result.get("clarify")
-        if clarify:
-            await tg.send_text(chat_id, str(clarify))
-            return
         if not ops:
-            await tg.send_text(chat_id, rendering.NUDGE)
+            await tg.send_text(chat_id, str(clarify) if clarify else rendering.NUDGE)
             return
         changesets.apply_operations(session, ops, _utcnow())
     except changesets.Ambiguous as e:
@@ -406,6 +403,8 @@ async def _handle_stray_text(tg: Telegram, chat_id: str, text: str) -> None:
     db.set_state(chat_id, "pending_draft", {"session": session})
     duplicates = changesets.duplicate_medicine_names(chat_id, session)
     await tg.send_message_with_buttons(chat_id, rendering.draft_message(session, duplicates), DRAFT_BUTTONS)
+    if clarify:  # mixed request: draft staged, now ask about the rest
+        await tg.send_text(chat_id, str(clarify))
 
 
 # ---------------------------------------------------------------- Flow 3 — apply draft

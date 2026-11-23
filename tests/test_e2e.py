@@ -439,3 +439,36 @@ def test_cancelrx_button_from_another_chat_cancels_nothing(tmp_db, tg, e2e, fixe
         _callback_update(4, 840, f"cancelrx:{rx_ids[0]}"))))
     assert len(db.active_prescriptions("840")) == 1
     assert any("Cancelled" in t for _, t in tg.texts)
+
+
+def test_edit_mixed_ops_and_clarify(tmp_db, tg, fixed_today, monkeypatch):
+    """Mixed request: high-confidence ops apply AND the clarify question still
+    reaches the user (ops are no longer discarded when clarify is present)."""
+    import asyncio
+    from app import changesets
+    monkeypatch.setattr(handlers, "_utcnow", lambda: NOW)
+    chat = "777"
+    session = changesets.draft_session(db.ensure_user(chat), [
+        {"name": "Dolo 650", "form": "tablet", "tablets_per_dose": 1,
+         "slots": ["dinner"], "food": "after", "duration_days": 3},
+    ], NOW)
+    with db.tx() as conn:
+        changesets.apply_session(conn, chat, session, NOW)
+
+    async def fake_interpret(text, ctx):
+        return ({"operations": [{"op": "update_medicine", "target": "dolo",
+                                 "fields": {"duration_days": 5}}],
+                 "clarify": "What did you mean by 'stronger'?"}, "fake-model")
+
+    monkeypatch.setattr(handlers, "interpret_edit", fake_interpret)
+    for uid, msg in ((1, "/edit"), (2, "5 days and make it stronger")):
+        asyncio.run(handlers.handle_event(tg, extract_event(
+            {"update_id": uid, "message": {"chat": {"id": 777}, "text": msg}})))
+    # confirm table (with the applied change) AND the clarify question, in order
+    confirm = tg.buttoned[-1][1]
+    assert "DOLO 650" in confirm and "5 days" in confirm
+    assert tg.texts[-1][1] == "What did you mean by 'stronger'?"
+    # change is staged in the open edit session, ready for Apply
+    state = json.loads(db.get_state(chat)["payload"])
+    med = state["session"]["prescriptions"][0]["medicines"][0]
+    assert med["duration_days"] == 5

@@ -284,7 +284,7 @@ async def _intake_photo(tg: Telegram, chat_id: str, file_id: str) -> None:
         # never silence (the webhook already returned 200; Telegram will not
         # redeliver. AIError was already handled here; catch-all covers the
         # wrong-typed escapes, review E2.)
-        log.warning("intake failed (no contents logged): %s", type(e).__name__)
+        log.warning("intake failed (no contents logged): %s: %s", type(e).__name__, e)
         guardrails.record_photo_failure(chat_id)  # unreadable-photo backoff
         medicines = None
 

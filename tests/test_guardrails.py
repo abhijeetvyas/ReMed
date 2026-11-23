@@ -180,13 +180,12 @@ def test_download_size_and_type_guard(tmp_db, monkeypatch):
     class FakeResp:
         def __init__(self, content, _json=None):
             self.content = content
+            self.status_code = 200
             self.headers = {}
             self._json = _json
 
         def json(self):
             return self._json
-
-        def raise_for_status(self): ...
 
     class FakeClient:
         def __init__(self, content):

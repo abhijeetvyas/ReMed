@@ -117,7 +117,8 @@ async def download_photo(token: str, file_id: str) -> bytes:
             raise TelegramError("getFile failed")
         path = meta["result"]["file_path"]
         resp = await client.get(f"{base}/file/{path}")
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            raise TelegramError(f"file download failed: HTTP {resp.status_code}")
         if len(resp.content) > max_bytes:
             raise TelegramError("image too large")
         if resp.content[:8] == b"\x89PNG\r\n\x1a\n":
